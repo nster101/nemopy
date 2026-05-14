@@ -29,6 +29,7 @@ dependencies = [
 
 [project.optional-dependencies]
 pandas = ["pandas>=1.0"]
+polars = ["polars>=0.19"]
 docs = [
     "sphinx>=4.0",
     "sphinx-rtd-theme>=1.0",
@@ -36,11 +37,13 @@ docs = [
 dev = [
     "pytest>=7.0",
     "pandas>=1.0",
+    "polars>=0.19",
     "sphinx>=4.0",
     "sphinx-rtd-theme>=1.0",
 ]
 
 [project.urls]
+Homepage = "https://github.com/n3m0-wits/nemopy"
 Repository = "https://github.com/n3m0-wits/nemopy"
 Issues = "https://github.com/n3m0-wits/nemopy/issues"
 

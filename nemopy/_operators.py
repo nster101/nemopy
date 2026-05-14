@@ -121,6 +121,72 @@ def __itruediv__(self, other):
     return self
 
 
+def __or__(self, other):
+    """Column-join operator: horizontally stack ``self`` and ``other``.
+
+    Assembles a matrix by placing ``other`` to the right of ``self``.
+    The mathematical notation ``[a | b | c]`` maps directly to
+    ``_c[...] | _c[...] | _c[...]`` in nemopy.
+
+    Parameters
+    ----------
+    other : ColVec, Mat, or array-like with 2D shape
+        Right operand. Must have the same number of rows as ``self``.
+
+    Returns
+    -------
+    Mat
+        Horizontally stacked result with shape ``(n, k_self + k_other)``.
+
+    Raises
+    ------
+    ShapeError
+        If ``self`` and ``other`` have different row counts.
+
+    Examples
+    --------
+    >>> _c[1, 2, 3] | _c[4, 5, 6]
+    Mat(3x2):
+      [1, 4]
+      [2, 5]
+      [3, 6]
+
+    >>> _c[1, 2, 3] | _c[4, 5, 6] | _c[7, 8, 9]
+    Mat(3x3):
+      [1, 4, 7]
+      [2, 5, 8]
+      [3, 6, 9]
+
+    See Also
+    --------
+    mat : Column-first constructor (equivalent, function form).
+    """
+    from nemopy._core import Mat  # avoid circular at module level
+
+    self_rows = np.shape(self)[0]
+    other_rows = np.shape(other)[0]
+    if self_rows != other_rows:
+        raise ShapeError(
+            f"'|' requires equal row counts, "
+            f"got {np.shape(self)} and {np.shape(other)}."
+        )
+    return Mat(np.hstack([np.asarray(self), np.asarray(other)]))
+
+
+def __ror__(self, other):
+    """Reflected column-join: ``other | self``."""
+    from nemopy._core import Mat  # avoid circular at module level
+
+    other_rows = np.shape(other)[0]
+    self_rows = np.shape(self)[0]
+    if other_rows != self_rows:
+        raise ShapeError(
+            f"'|' requires equal row counts, "
+            f"got {np.shape(other)} and {np.shape(self)}."
+        )
+    return Mat(np.hstack([np.asarray(other), np.asarray(self)]))
+
+
 _VecBase.__mul__ = __mul__
 _VecBase.__rmul__ = __rmul__
 _VecBase.__add__ = __add__
@@ -135,3 +201,5 @@ _VecBase.__iadd__ = __iadd__
 _VecBase.__isub__ = __isub__
 _VecBase.__imul__ = __imul__
 _VecBase.__itruediv__ = __itruediv__
+_VecBase.__or__ = __or__
+_VecBase.__ror__ = __ror__
