@@ -299,6 +299,25 @@ def to_dataframe(self, columns=None, index=None):
     return pd.DataFrame(np.asarray(self), columns=columns, index=index)
 ```
 
+**Also provided:**
+
+```python
+# On ColVec:
+def to_polars(self, name=None):
+    """Return a polars Series. Requires polars >= 0.19."""
+    import polars as pl
+    return pl.Series(name=name or "", values=self.flatten().tolist())
+
+# On Mat:
+def to_polars(self, schema=None):
+    """Return a polars DataFrame. Requires polars >= 0.19."""
+    import polars as pl
+    arr = np.asarray(self)
+    if schema is None:
+        schema = [f"col_{i}" for i in range(arr.shape[1])]
+    return pl.from_numpy(arr, schema=schema)
+```
+
 **Not provided:**
 - `to_set()` — sets discard ordering and duplicates, which are both meaningful in vectors
   and matrices. If a user needs the unique elements, `set(u.to_list())` is explicit about
@@ -970,3 +989,102 @@ Each step has a verification criterion.
 12. **Set up Sphinx documentation** per Appendix A
     → Verify: `sphinx-build -b html docs/ docs/_build/html` succeeds;
     `sphinx-build -b doctest docs/ docs/_build/doctest` passes all examples
+
+---
+
+## 18. Column-Join Operator `|`
+
+### 18.1 Rationale
+
+Python cannot parse `[a b c; d e f]` as a literal — semicolons are not valid
+inside expressions. The `_m["..."]` string constructor handles literal matrices,
+but requires string tokens, preventing use of runtime variables.
+
+The `|` operator provides a Python-native column-join syntax that matches the
+mathematical notation `A = [col₁ | col₂ | col₃]`:
+
+```python
+A = _c[a, b, c] | _c[d, e, f] | _c[g, h, i]   # Mat(3,3)
+```
+
+### 18.2 Semantics
+
+```
+ColVec | ColVec  →  Mat  (two-column, horizontally stacked)
+ColVec | Mat     →  Mat  (column prepended on left)
+Mat    | ColVec  →  Mat  (column appended on right)
+Mat    | Mat     →  Mat  (horizontal stack, same row count required)
+```
+
+Shape guard: if row counts differ, `ShapeError` is raised.
+
+### 18.3 Implementation
+
+Defined as `__or__` and `__ror__` on `_VecBase` in `nemopy/_operators.py`.
+Uses `np.hstack` internally.
+
+```python
+def __or__(self, other):
+    if np.shape(self)[0] != np.shape(other)[0]:
+        raise ShapeError(...)
+    return Mat(np.hstack([np.asarray(self), np.asarray(other)]))
+```
+
+### 18.4 Behavioural contract
+
+| Expression | Result type | Shape |
+|---|---|---|
+| `_c[1,2,3] \| _c[4,5,6]` | `Mat` | `(3, 2)` |
+| `_c[1,2,3] \| _c[4,5,6] \| _c[7,8,9]` | `Mat` | `(3, 3)` |
+| `A \| _c[1,2,3]` where A is `Mat(3,2)` | `Mat` | `(3, 3)` |
+| `_c[1,2] \| _c[1,2,3]` | — | `ShapeError` (row mismatch) |
+
+---
+
+## 19. Polars Integration
+
+### 19.1 Inbound (`as_col`, `as_mat`)
+
+`as_col` and `as_mat` accept `polars.Series` and `polars.DataFrame` respectively,
+using the same optional-import guard as the existing pandas branches:
+
+```python
+try:
+    import polars as pl
+    if isinstance(x, pl.Series):
+        return ColVec(x.to_numpy().astype(float).reshape(-1, 1))
+except ImportError:
+    pass
+```
+
+### 19.2 Outbound (`.to_polars()`)
+
+Both `ColVec` and `Mat` gain a `.to_polars()` method:
+
+- `ColVec.to_polars(name=None)` → `polars.Series`
+- `Mat.to_polars(schema=None)` → `polars.DataFrame`
+
+These follow the same `ImportError`-on-missing-polars pattern as the pandas
+methods.
+
+### 19.3 Accessor (`nemopy.polars`)
+
+Importing `nemopy.polars` registers two polars accessors:
+
+- `df.nemo.col(name)` → `ColVec`
+- `df.nemo.mat(names)` → `Mat`
+- `series.nemo.col()` → `ColVec`
+
+The accessor module is in `nemopy/polars.py` and raises `ImportError` at import
+time if polars is not installed.
+
+### 19.4 Optional dependency
+
+Polars is an optional dependency declared in `pyproject.toml`:
+
+```toml
+[project.optional-dependencies]
+polars = ["polars>=0.19"]
+```
+
+Install with: `pip install "nemopy[polars]"`

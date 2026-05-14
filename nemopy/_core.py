@@ -6,14 +6,52 @@ _NPY_MAJOR = int(np.__version__.split(".")[0])
 
 
 class ShapeError(ValueError):
-    """Raised when array shapes are incompatible for the requested operation."""
+    """Raised when array shapes are incompatible for the requested operation.
+
+    A subclass of ``ValueError``, so it is caught by ``except ValueError``
+    in existing code. Emitted by shape-guarded arithmetic operators,
+    construction checks (``ColVec``, ``Mat``), and property guards
+    (``.inv``, ``.det``, ``.is_singular``).
+
+    Notes
+    -----
+    Use ``except ShapeError`` for targeted handling, or ``except ValueError``
+    for broader compatibility with code that does not import nemopy.
+
+    Examples
+    --------
+    >>> try:
+    ...     _c[1, 2, 3] + _c[1, 2]
+    ... except ShapeError as exc:
+    ...     print(type(exc).__name__)
+    ShapeError
+    """
 
     pass
 
 
 class ConventionWarning(UserWarning):
-    """Raised when a plain ndarray is passed where a nemopy type was expected,
-    indicating a possible row/column convention mismatch."""
+    """Emitted when a plain ndarray is used where a nemopy type is expected,
+    indicating a possible row/column convention mismatch.
+
+    A subclass of ``UserWarning``. Emitted in two situations:
+
+    1. A 1D ``numpy.ndarray`` is passed to ``mat()`` — it is promoted to a
+       ``ColVec``, but may be transposed relative to nemopy's column-first
+       convention.
+    2. A plain ndarray whose ``shape[0] < shape[1]`` (more columns than rows)
+       is used as an operand of ``@`` with a ``ColVec`` or ``Mat`` — it may
+       have been constructed row-first and not yet transposed.
+
+    Notes
+    -----
+    To suppress intentionally in code that mixes plain arrays with nemopy types::
+
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", ConventionWarning)
+            result = A @ some_numpy_array
+    """
 
     pass
 
@@ -43,8 +81,9 @@ def _apply_type_rules(result):
 class _VecBase(np.ndarray):
     """Non-public base class for ColVec and Mat.
 
-    Holds shared __array_finalize__, operator overrides, and __repr__.
-    Not exported. Not intended for direct instantiation.
+    Holds shared ``__array_finalize__``, ufunc persistence, operator overrides,
+    and the ``.T``, ``.H`` properties. Not exported. Not intended for direct
+    instantiation.
     """
 
     def __array_finalize__(self, obj):
@@ -82,30 +121,79 @@ class _VecBase(np.ndarray):
     def T(self):
         """Transpose, with subclass label dispatched by output shape.
 
-        Returns a view of the underlying data with axes reversed. The
-        class label follows §4.4 shape → type rules: shape (n, 1) →
-        ColVec; any other 2D shape → Mat. Shadows np.ndarray.T because
-        NumPy sets the view's shape after __array_finalize__ returns,
-        so the inherited .T would otherwise keep the source subclass.
+        Returns a **view** of the underlying data with axes reversed. The
+        return type follows the shape → type rules: an output of shape
+        ``(n, 1)`` becomes a ``ColVec``; any other 2D shape becomes a ``Mat``.
+        NumPy's native ``.T`` is shadowed because it would preserve the source
+        subclass label instead of relabelling by shape.
 
         Returns
         -------
         ColVec or Mat
-            Type determined by output shape per §4.4.
+            Type determined by output shape: ``(n, 1)`` → ``ColVec``;
+            otherwise → ``Mat``.
+
+        Notes
+        -----
+        ``.T`` is always a view — modifying the result modifies the original:
+
+            >>> import numpy as np
+            >>> u = _c[1, 2, 3]
+            >>> row = u.T
+            >>> np.shares_memory(u, row)
+            True
+
+        Examples
+        --------
+        Transposing a column vector yields a ``(1, n)`` row matrix:
+
+        >>> _c[1, 2, 3].T
+        Mat(1x3):
+          [1, 2, 3]
+
+        Transposing a matrix:
+
+        >>> mat([1, 2, 3], [4, 5, 6]).T
+        Mat(2x3):
+          [1, 2, 3]
+          [4, 5, 6]
+
+        Inner product — the standard ``u^T v`` expression:
+
+        >>> u = _c[1, 2, 3]
+        >>> v = _c[4, 5, 6]
+        >>> (u.T @ v).item()
+        32.0
+
+        Outer product:
+
+        >>> u @ v.T
+        Mat(3x3):
+          [4, 5, 6]
+          [8, 10, 12]
+          [12, 15, 18]
+
+        See Also
+        --------
+        H : Conjugate transpose (equals ``.T`` for real arrays).
         """
         return _apply_type_rules(np.asarray(self).transpose())
 
     def transpose(self, *axes):
         """Transpose, with subclass label dispatched by output shape.
 
-        Semantic twin of `.T` covering the method spelling (and, by
-        extension, `np.transpose(x)`). The returned class label follows
-        §4.4 shape → type rules.
+        Semantic twin of ``.T`` covering the method spelling and, by extension,
+        ``numpy.transpose(x)``. The return type follows the same shape → type
+        rules as ``.T``.
 
         Returns
         -------
         ColVec or Mat
-            Type determined by output shape per §4.4.
+            Type determined by output shape.
+
+        See Also
+        --------
+        T : Property spelling of the same operation.
         """
         return _apply_type_rules(np.asarray(self).transpose(*axes))
 
@@ -113,20 +201,113 @@ class _VecBase(np.ndarray):
     def H(self):
         """Conjugate transpose (Hermitian adjoint).
 
-        Returns self.conj().T. For real arrays, this is identical to .T.
+        Returns ``self.conj().T``. For real arrays this is identical to ``.T``.
+        For complex arrays it simultaneously conjugates all elements and
+        transposes. Use ``.H`` wherever the mathematics requires :math:`A^H`
+        — inner products in complex spaces, unitary matrices, Hermitian
+        matrices.
 
         Returns
         -------
         ColVec or Mat
-            Type determined by output shape (same rules as .T).
+            Type determined by output shape (same rules as ``.T``).
+
+        Notes
+        -----
+        For real arrays, ``.H`` and ``.T`` produce identical results because
+        conjugation is the identity on the reals.
+
+        Examples
+        --------
+        For a real column vector, ``.H`` equals ``.T``:
+
+        >>> _c[1, 2, 3].H
+        Mat(1x3):
+          [1, 2, 3]
+
+        For a real matrix, ``.H`` equals ``.T``:
+
+        >>> mat([1, 2, 3], [4, 5, 6]).H
+        Mat(2x3):
+          [1, 2, 3]
+          [4, 5, 6]
+
+        See Also
+        --------
+        T : Plain transpose (no conjugation).
         """
         return self.conj().T
 
 
 class ColVec(_VecBase):
-    """Column vector: shape (n, 1), dtype float64.
+    """Column vector of shape (n, 1) with dtype float64.
 
-    Construct via _c[...] for literals, or ColVec(arr) for existing arrays.
+    The primary vector type in nemopy. All column vectors are strictly 2D
+    arrays of shape ``(n, 1)``, eliminating the ambiguity between NumPy's
+    ``(n,)``, ``(n, 1)``, and ``(1, n)`` representations.
+
+    Parameters
+    ----------
+    input_array : array-like
+        A 2D array of shape ``(n, 1)``. Any numeric dtype is accepted and
+        promoted to ``float64``.
+
+    Attributes
+    ----------
+    shape : tuple of int
+        Always ``(n, 1)`` for some ``n >= 1``.
+    dtype : numpy.dtype
+        Always ``float64``.
+
+    Raises
+    ------
+    ShapeError
+        If ``input_array`` is not 2D with exactly one column.
+
+    Examples
+    --------
+    Construct from literals using the ``_c`` bracket-notation constructor
+    (the preferred form):
+
+    >>> _c[1, 2, 3]
+    ColVec([1.0, 2.0, 3.0])
+
+    Wrap an existing ``(n, 1)`` array:
+
+    >>> import numpy as np
+    >>> ColVec(np.array([[4.0], [5.0], [6.0]]))
+    ColVec([4.0, 5.0, 6.0])
+
+    Single element:
+
+    >>> _c[5]
+    ColVec([5.0])
+
+    Index and slice:
+
+    >>> u = _c[10, 20, 30]
+    >>> u[0]        # integer → scalar float
+    10.0
+    >>> u[1:]       # slice → ColVec
+    ColVec([20.0, 30.0])
+
+    Linear algebra:
+
+    >>> u = _c[1, 2, 3]
+    >>> v = _c[4, 5, 6]
+    >>> (u.T @ v).item()   # inner product
+    32.0
+    >>> u @ v.T            # outer product → Mat
+    Mat(3x3):
+      [4, 5, 6]
+      [8, 10, 12]
+      [12, 15, 18]
+
+    See Also
+    --------
+    _c : Bracket-notation constructor for literals — the usual way to build a ColVec.
+    as_col : Flexible inbound converter (1D arrays, Series, scalars, lists).
+    Mat : Matrix type for shape ``(n, k)`` with k ≥ 1.
     """
 
     def __new__(cls, input_array):
@@ -146,16 +327,38 @@ class ColVec(_VecBase):
         return self.__repr__()
 
     def __getitem__(self, key):
-        """Index a ColVec, enforcing column-vector semantics per §6.1.
+        """Index a ColVec, enforcing column-vector semantics.
 
-        Single-element extraction (integer or (i, 0) tuple) returns a Python
-        float; structure-preserving indexing (slice, fancy, boolean mask)
-        returns a ColVec of shape (k, 1).
+        Single-element extraction (integer key) returns a scalar float;
+        structure-preserving indexing (slice, fancy index, boolean mask)
+        returns a ``ColVec``.
+
+        Parameters
+        ----------
+        key : int, slice, list, or ndarray
+            NumPy-compatible index expression applied to the ``(n, 1)`` array.
 
         Returns
         -------
-        float, ColVec, or np.ndarray
-            Type determined by the shape of the underlying indexing result.
+        float
+            When ``key`` is an integer — element extracted as a Python float.
+        ColVec
+            When ``key`` is a slice, list, or boolean mask — result is a
+            ``(k, 1)`` ColVec.
+
+        Examples
+        --------
+        >>> u = _c[10, 20, 30, 40, 50]
+        >>> u[0]            # integer → float
+        10.0
+        >>> u[1:4]          # slice → ColVec
+        ColVec([20.0, 30.0, 40.0])
+        >>> u[[0, 2, 4]]    # fancy index → ColVec
+        ColVec([10.0, 30.0, 50.0])
+
+        See Also
+        --------
+        Mat.__getitem__ : Indexing semantics for matrices.
         """
         if self.ndim != 2 or self.shape[1] != 1:
             return np.asarray(self)[key]
@@ -177,27 +380,53 @@ class ColVec(_VecBase):
         return np.asarray(result)
 
     def to_numpy(self):
-        """Return a plain ndarray of shape (n, 1). Strips subclass label.
+        """Return a plain ndarray of shape (n, 1). Strips the ColVec subclass label.
 
-        Use when passing to libraries that reject ndarray subclasses.
+        Use when passing to libraries that perform ``type(x) == np.ndarray``
+        checks and reject ndarray subclasses.
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Shape ``(n, 1)``, dtype ``float64``.
+
+        Examples
+        --------
+        >>> u = _c[1, 2, 3]
+        >>> import numpy as np
+        >>> type(u.to_numpy()) is np.ndarray
+        True
+        >>> u.to_numpy().shape
+        (3, 1)
+
+        See Also
+        --------
+        to_flat : Returns shape ``(n,)`` (1D) instead of ``(n, 1)``.
+        to_list : Returns a plain Python list.
         """
         return np.array(self)
 
     def to_flat(self):
         """Return a 1D ndarray of shape (n,).
 
-        Use when interfacing with scipy.optimize, pd.Series, or any API
-        that expects a 1D parameter vector.
+        Use when interfacing with ``scipy.optimize``, ``pandas.Series``, or
+        any API that expects a 1D parameter vector.
 
         Returns
         -------
-        np.ndarray
+        numpy.ndarray
             Shape ``(n,)``, dtype ``float64``.
+
+        Examples
+        --------
+        >>> u = _c[1, 2, 3]
+        >>> u.to_flat().shape
+        (3,)
+
+        See Also
+        --------
+        to_numpy : Returns shape ``(n, 1)`` with the subclass label stripped.
+        to_series : Returns a ``pandas.Series``.
         """
         return np.asarray(self).flatten()
 
@@ -207,7 +436,17 @@ class ColVec(_VecBase):
         Returns
         -------
         list of float
-            Length ``n``.
+            Length ``n``, values as Python floats.
+
+        Examples
+        --------
+        >>> _c[1, 2, 3].to_list()
+        [1.0, 2.0, 3.0]
+
+        See Also
+        --------
+        to_flat : Returns a 1D ndarray instead.
+        to_numpy : Returns an ndarray of shape ``(n, 1)``.
         """
         return self.flatten().tolist()
 
@@ -219,27 +458,139 @@ class ColVec(_VecBase):
         index : array-like, optional
             Index labels. Defaults to ``range(n)``.
         name : str, optional
-            Series name.
+            Name of the Series.
 
         Returns
         -------
-        pd.Series
+        pandas.Series
+            Length ``n``, dtype ``float64``.
 
         Raises
         ------
         ImportError
             If pandas is not installed.
+
+        Examples
+        --------
+        >>> u = _c[10, 20, 30]
+        >>> s = u.to_series(index=["a", "b", "c"], name="vals")
+        >>> s.name
+        'vals'
+        >>> list(s.index)
+        ['a', 'b', 'c']
+
+        See Also
+        --------
+        to_flat : Extracts the underlying 1D ndarray (suitable as ``pd.Series`` input).
+        to_polars : Returns a ``polars.Series`` instead.
+        Mat.to_dataframe : Analogous conversion from ``Mat`` to ``DataFrame``.
         """
         import pandas as pd
 
         return pd.Series(self.flatten(), index=index, name=name)
 
+    def to_polars(self, name=None):
+        """Return a polars Series.
+
+        Parameters
+        ----------
+        name : str, optional
+            Name of the Series. Defaults to an empty string.
+
+        Returns
+        -------
+        polars.Series
+            Length ``n``, dtype ``Float64``.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        .. code-block:: python
+
+            import polars as pl
+            u = _c[1, 2, 3]
+            s = u.to_polars(name="x")
+            # polars.Series: name='x', values=[1.0, 2.0, 3.0]
+
+        See Also
+        --------
+        to_series : Returns a ``pandas.Series`` instead.
+        to_flat : Returns a plain 1D ndarray.
+        """
+        import polars as pl
+
+        return pl.Series(name=name or "", values=self.flatten().tolist())
+
 
 class Mat(_VecBase):
-    """Matrix: shape (n, k) with k >= 1, dtype float64.
+    """Matrix of shape (n, k) with dtype float64.
 
-    Construct via mat(...) for column-first assembly, or Mat(arr) for
-    existing 2D arrays.
+    The matrix type in nemopy. Always 2D, always ``float64``. Construct
+    column-first with ``mat(col1, col2, ...)`` — each argument is one
+    *column* of the result. Alternatively, use the MATLAB-style string
+    constructor ``_m["..."]`` or the flexible inbound converter ``as_mat()``.
+
+    Parameters
+    ----------
+    input_array : array-like
+        A 2D array of any shape ``(n, k)``. Any numeric dtype is accepted
+        and promoted to ``float64``.
+
+    Attributes
+    ----------
+    shape : tuple of int
+        ``(n, k)`` — rows × columns.
+    dtype : numpy.dtype
+        Always ``float64``.
+
+    Raises
+    ------
+    ShapeError
+        If ``input_array`` is not 2D.
+
+    Examples
+    --------
+    Column-first construction — each argument is a column:
+
+    >>> A = mat([1, 2, 3], [4, 5, 6])
+    >>> A
+    Mat(3x2):
+      [1, 4]
+      [2, 5]
+      [3, 6]
+
+    Column extraction returns a ``ColVec``, usable directly in ``@``:
+
+    >>> A[:, 0]
+    ColVec([1.0, 2.0, 3.0])
+
+    Matrix multiplication:
+
+    >>> A.T @ A
+    Mat(2x2):
+      [14, 32]
+      [32, 77]
+
+    Matrix inverse and determinant:
+
+    >>> B = mat([1, 0], [0, 2])
+    >>> B.inv
+    Mat(2x2):
+      [1, 0]
+      [0, 0.5]
+    >>> B.det
+    2.0
+
+    See Also
+    --------
+    mat : Column-first constructor (preferred over wrapping ``Mat`` directly).
+    _m : MATLAB-style string constructor ``_m["1 2; 3 4"]``.
+    as_mat : Flexible inbound converter for DataFrames, 2D arrays, nested lists.
+    eye : Identity matrix constructor.
     """
 
     def __new__(cls, input_array):
@@ -251,6 +602,47 @@ class Mat(_VecBase):
         return arr.view(cls)
 
     def __getitem__(self, key):
+        """Index a Mat, enforcing column-extraction semantics.
+
+        Single-column extraction (``A[:, j]``) returns a ``ColVec`` usable
+        directly in ``@`` without reshape. Single-element extraction returns
+        ``float``. Multi-column and row results are typed as ``Mat``.
+
+        Parameters
+        ----------
+        key : int, slice, tuple, list, or ndarray
+            NumPy-compatible index expression.
+
+        Returns
+        -------
+        float
+            When ``key`` selects a single scalar element.
+        ColVec
+            When ``key`` selects a single column (``A[:, j]``) or produces
+            any 2D result with exactly one column.
+        Mat
+            When ``key`` selects a multi-column submatrix or a row.
+
+        Examples
+        --------
+        >>> A = mat([1, 2, 3], [4, 5, 6], [7, 8, 9])
+        >>> A[1, 2]      # scalar element
+        8.0
+        >>> A[:, 0]      # single column → ColVec
+        ColVec([1.0, 2.0, 3.0])
+        >>> A[:, 1:]     # multi-column slice → Mat
+        Mat(3x2):
+          [4, 7]
+          [5, 8]
+          [6, 9]
+        >>> A[0, :]      # row → Mat
+        Mat(1x3):
+          [1, 4, 7]
+
+        See Also
+        --------
+        ColVec.__getitem__ : Indexing semantics for column vectors.
+        """
         result = super().__getitem__(key)
 
         if not isinstance(result, np.ndarray) or result.ndim == 0:
@@ -284,7 +676,7 @@ class Mat(_VecBase):
 
     @property
     def inv(self):
-        """Matrix inverse A^{-1}.
+        """Matrix inverse A⁻¹.
 
         Returns
         -------
@@ -296,7 +688,37 @@ class Mat(_VecBase):
         ShapeError
             If the matrix is not square.
         numpy.linalg.LinAlgError
-            If the matrix is singular (not invertible).
+            If the matrix is singular. Use ``.is_singular`` to guard before
+            calling ``.inv`` if you need to handle this case.
+
+        Examples
+        --------
+        The inverse of the identity is the identity:
+
+        >>> eye(2).inv
+        Mat(2x2):
+          [1, 0]
+          [0, 1]
+
+        A diagonal matrix:
+
+        >>> mat([2, 0], [0, 4]).inv
+        Mat(2x2):
+          [0.5, 0]
+          [0, 0.25]
+
+        Verify round-trip:
+
+        >>> import numpy as np
+        >>> A = mat([1, 2], [3, 4])
+        >>> np.allclose(A @ A.inv, eye(2))
+        True
+
+        See Also
+        --------
+        is_singular : Check if the matrix has an inverse before calling ``.inv``.
+        det : Determinant (zero iff singular).
+        eye : Identity matrix.
         """
         if self.shape[0] != self.shape[1]:
             raise ShapeError(
@@ -309,8 +731,10 @@ class Mat(_VecBase):
     def is_singular(self):
         """Whether the matrix is singular (non-invertible).
 
-        Singularity is determined using ``numpy.linalg.matrix_rank(self)``.
-        A square matrix is singular when its rank is less than its dimension.
+        Uses ``numpy.linalg.matrix_rank`` for numerical robustness. A square
+        matrix is considered singular when its rank is less than its
+        dimension. This is more reliable than testing ``abs(det) < tol`` for
+        large matrices where the determinant can overflow or underflow.
 
         Returns
         -------
@@ -320,8 +744,20 @@ class Mat(_VecBase):
         Raises
         ------
         ShapeError
-            If the matrix is not square. Singularity is defined only for
-            square matrices.
+            If the matrix is not square.
+
+        Examples
+        --------
+        >>> eye(3).is_singular
+        False
+
+        >>> mat([1, 2], [2, 4]).is_singular   # col1 = 2 * col0
+        True
+
+        See Also
+        --------
+        inv : Raises ``LinAlgError`` on singular matrices.
+        det : Determinant (zero iff singular, less numerically robust).
         """
         if self.shape[0] != self.shape[1]:
             raise ShapeError(
@@ -337,7 +773,7 @@ class Mat(_VecBase):
         Returns
         -------
         float
-            The determinant as a Python float.
+            The determinant as a Python ``float``.
 
         Raises
         ------
@@ -346,12 +782,21 @@ class Mat(_VecBase):
 
         Examples
         --------
-        >>> Mat([[1, 2], [3, 4]]).det
+        >>> eye(3).det
+        1.0
+
+        >>> mat([1, 2], [3, 4]).det
         -2.0
+
+        A singular matrix has determinant zero:
+
+        >>> mat([1, 2], [2, 4]).det
+        0.0
 
         See Also
         --------
-        Mat.T : Transpose of the matrix.
+        is_singular : Numerically robust singularity check (preferred over ``det == 0``).
+        inv : Matrix inverse (exists iff ``det != 0``).
         """
         if self.shape[0] != self.shape[1]:
             raise ShapeError(
@@ -359,3 +804,127 @@ class Mat(_VecBase):
                 f"This matrix has shape {self.shape}."
             )
         return float(np.linalg.det(self))
+
+    def to_numpy(self):
+        """Return a plain ndarray of shape (n, k). Strips the Mat subclass label.
+
+        Use when passing to libraries that perform ``type(x) == np.ndarray``
+        checks and reject ndarray subclasses.
+
+        Returns
+        -------
+        numpy.ndarray
+            Shape ``(n, k)``, dtype ``float64``.
+
+        Examples
+        --------
+        >>> A = mat([1, 2], [3, 4])
+        >>> import numpy as np
+        >>> type(A.to_numpy()) is np.ndarray
+        True
+
+        See Also
+        --------
+        to_list : Returns a nested Python list of rows.
+        to_dataframe : Returns a ``pandas.DataFrame``.
+        """
+        return np.array(self)
+
+    def to_list(self):
+        """Return a nested list (list of rows, each a list of floats).
+
+        Returns
+        -------
+        list of list of float
+            Outer list has ``n`` elements (rows); each inner list has ``k``
+            elements (column values for that row).
+
+        Examples
+        --------
+        >>> mat([1, 2], [3, 4]).to_list()
+        [[1.0, 3.0], [2.0, 4.0]]
+
+        See Also
+        --------
+        to_numpy : Returns a plain ndarray instead.
+        to_dataframe : Returns a ``pandas.DataFrame``.
+        """
+        return self.tolist()
+
+    def to_dataframe(self, columns=None, index=None):
+        """Return a pandas DataFrame.
+
+        Parameters
+        ----------
+        columns : list of str, optional
+            Column labels. Defaults to integer range ``[0, 1, ..., k-1]``.
+        index : array-like, optional
+            Row index labels. Defaults to integer range ``[0, 1, ..., n-1]``.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Shape ``(n, k)``.
+
+        Raises
+        ------
+        ImportError
+            If pandas is not installed.
+
+        Examples
+        --------
+        >>> A = mat([1, 2, 3], [4, 5, 6])
+        >>> df = A.to_dataframe(columns=["x", "y"])
+        >>> list(df.columns)
+        ['x', 'y']
+        >>> df.shape
+        (3, 2)
+
+        See Also
+        --------
+        to_polars : Returns a ``polars.DataFrame`` instead.
+        as_mat : Convert a DataFrame back to a ``Mat``.
+        to_numpy : Returns a plain ndarray instead.
+        """
+        import pandas as pd
+
+        return pd.DataFrame(np.asarray(self), columns=columns, index=index)
+
+    def to_polars(self, schema=None):
+        """Return a polars DataFrame.
+
+        Parameters
+        ----------
+        schema : list of str or dict, optional
+            Column names (or a polars schema). Defaults to ``["col_0", "col_1", ...]``.
+
+        Returns
+        -------
+        polars.DataFrame
+            Shape ``(n, k)``.
+
+        Raises
+        ------
+        ImportError
+            If polars is not installed.
+
+        Examples
+        --------
+        .. code-block:: python
+
+            import polars as pl
+            A = mat([1, 2, 3], [4, 5, 6])
+            df = A.to_polars(schema=["x", "y"])
+            # polars.DataFrame with columns x, y
+
+        See Also
+        --------
+        to_dataframe : Returns a ``pandas.DataFrame`` instead.
+        as_mat : Convert a polars DataFrame back to a ``Mat``.
+        """
+        import polars as pl
+
+        arr = np.asarray(self)
+        if schema is None:
+            schema = [f"col_{i}" for i in range(arr.shape[1])]
+        return pl.from_numpy(arr, schema=schema)
