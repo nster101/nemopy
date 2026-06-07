@@ -71,6 +71,25 @@
 - Source: DESIGN.md §4.3 — Mat.__repr__ specification.
 - Expected: repr contains "Mat(2x3):" and row entries.
 
+## Test: test_repr_1x1_mat
+- Goal: Verify that repr() on a (1,1) Mat does not crash and produces the
+        expected "Mat(1x1):\n  [value]" format string.
+- Source: DESIGN.md §4.3 — Mat.__repr__ specification.
+- Expected: repr contains "Mat(1x1):" and the formatted scalar value.
+
+## Test: test_repr_after_flatten
+- Goal: Verify that calling .flatten() on a Mat either returns a plain ndarray
+        (preferred per type rules in _apply_type_rules), or if it retains a
+        Mat-typed object, repr() still does not crash.
+- Source: DESIGN.md §4.3, §4.4 — Mat.__repr__ and type persistence rules.
+- Expected: No TypeError; if result is Mat, repr() succeeds.
+
+## Test: test_repr_single_row_mat
+- Goal: Verify that repr() works for (1, n) matrices (e.g. a row matrix
+        produced by transposing a ColVec).
+- Source: DESIGN.md §4.3 — Mat.__repr__ specification.
+- Expected: repr contains "Mat(1x3):" and the row values.
+
 ## Test: test_mat_inv_identity_returns_mat_identity
 - Goal: Verify that `.inv` on an invertible square Mat returns a Mat equal to
         the mathematical inverse (identity remains identity).
@@ -333,6 +352,26 @@ class TestMat:
         assert r.startswith("Mat(2x3):")
         assert "[1, 2, 3]" in r
         assert "[4, 5, 6]" in r
+
+    def test_repr_1x1_mat(self):
+        """repr() on a (1,1) Mat does not crash and produces expected format."""
+        A = Mat(np.array([[5.0]]))
+        r = repr(A)
+        assert r.startswith("Mat(1x1):")
+        assert "[5]" in r
+
+    def test_repr_after_flatten(self):
+        """flatten() on a Mat does not crash repr if Mat label leaks to 1D."""
+        A = Mat(np.array([[1, 2, 3], [4, 5, 6]], dtype=float))
+        flat = A.flatten()
+        repr(flat)
+
+    def test_repr_single_row_mat(self):
+        """repr() works for (1, n) row matrices."""
+        A = Mat(np.array([[1, 2, 3]], dtype=float))
+        r = repr(A)
+        assert r.startswith("Mat(1x3):")
+        assert "[1, 2, 3]" in r
 
 
 class TestMatSingularity:

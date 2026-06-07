@@ -667,9 +667,13 @@ class Mat(_VecBase):
 
     def __repr__(self):
         rows = self.tolist()
+        if rows and not isinstance(rows[0], list):
+            rows = [rows]
         row_strs = [", ".join(f"{v:.6g}" for v in row) for row in rows]
         inner = "\n  ".join(f"[{r}]" for r in row_strs)
-        return f"Mat({self.shape[0]}x{self.shape[1]}):\n  {inner}"
+        nrows = len(rows)
+        ncols = len(rows[0]) if rows else 0
+        return f"Mat({nrows}x{ncols}):\n  {inner}"
 
     def __str__(self):
         return self.__repr__()
