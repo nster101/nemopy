@@ -1,8 +1,9 @@
-"""Intentional nemopy incompatibilities with the Array API standard.
+"""Known nemopy incompatibilities with the Array API standard.
 
-These tests are expected to fail (xfail) because nemopy deliberately differs
-from the Array API standard, or because upstream NumPy does not yet conform
-to the Array API specification on the installed version.
+Registry of Array API test suite failures and their root causes.  Each
+entry maps a test node ID to a human-readable reason.  An external
+conftest hook can consume ``ALL_KNOWN_FAILURES`` to apply ``xfail``
+markers automatically when running the array-api-tests suite.
 
 Categories
 ----------
@@ -205,7 +206,7 @@ UPSTREAM_NUMPY_SPECIAL_CASES = {
 }
 
 # ---------------------------------------------------------------------------
-# Combined lookup — used by the conftest xfail hook
+# Combined lookup — importable by an external conftest to apply xfail markers
 # ---------------------------------------------------------------------------
 
 ALL_KNOWN_FAILURES = {}

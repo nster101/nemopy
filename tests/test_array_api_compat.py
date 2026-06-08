@@ -3,8 +3,9 @@
 Runs the `array-api-tests <https://github.com/data-apis/array-api-tests>`_
 suite against nemopy to measure conformance with the Python Array API
 standard.  Known failures (intentional nemopy design decisions and upstream
-NumPy gaps) are marked ``xfail`` via the skip list in
-``tests/array_api_skips.py``.
+NumPy gaps) are documented in ``tests/array_api_skips.py`` and can be
+used by an external conftest hook to apply ``xfail`` markers when running
+the suite.
 
 Usage
 -----
@@ -33,7 +34,7 @@ Measured against array-api-tests @ commit 5f847a3 with NumPy 2.4.6:
 =================================================
 Total tests:            1384
 Passed:                 1325  (95.7%)
-Failed (known/xfail):      54  — see tests/array_api_skips.py
+Failed (known):            54  — see tests/array_api_skips.py
 Skipped (upstream):         5  — remainder operator (NumPy upstream)
 =================================================
 
@@ -58,23 +59,14 @@ design decisions or upstream NumPy conformance gaps that exist with or
 without nemopy.
 """
 
-import subprocess
-import sys
+def test_nemopy_exports_available():
+    """Verify that nemopy's core public API is importable.
 
-
-def test_array_api_suite_importable():
-    """Verify the array-api-tests suite is importable (smoke test).
-
-    This does not run the full suite — it only confirms that the required
-    packages are installed.  The full suite must be run from the
+    This does not run the full Array API suite — it only confirms that
+    nemopy's types and constructors are available, which is a prerequisite
+    for the external suite.  The full suite must be run from the
     array-api-tests directory (see module docstring).
     """
-    try:
-        import hypothesis  # noqa: F401
-    except ImportError:
-        import pytest
-        pytest.skip("hypothesis not installed — install for Array API tests")
-
     import nemopy  # noqa: F401
     assert hasattr(nemopy, "ColVec")
     assert hasattr(nemopy, "Mat")
