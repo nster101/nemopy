@@ -788,8 +788,8 @@ class TestArrayFunction:
 
     def test_array_function_linalg_solve(self):
         """np.linalg.solve(Mat, ColVec) returns ColVec with correct values."""
-        A = Mat(np.array([[2, 1], [5, 3]], dtype=float))
-        b = ColVec(np.array([[4], [7]], dtype=float))
+        A = Mat(np.array([[1, 2], [3, 5]], dtype=float))
+        b = ColVec(np.array([[5], [13]], dtype=float))
         x = np.linalg.solve(A, b)
         assert isinstance(x, ColVec)
         assert x.shape == (2, 1)
