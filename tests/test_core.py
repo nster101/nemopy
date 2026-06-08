@@ -240,6 +240,7 @@ import warnings
 from unittest import mock
 
 from nemopy import _c, ColVec, ConventionWarning, Mat, ShapeError, mat
+from nemopy._core import _VecBase
 from nemopy._constructors import _c
 from nemopy._operators import _is_scalar, _check_shapes
 
@@ -742,3 +743,103 @@ class TestMatOutboundConversions:
         A = Mat(np.array([[1, 2], [3, 4]], dtype=float))
         with pytest.raises(ImportError):
             A.to_dataframe()
+
+
+## Test: test_array_function_linalg_solve
+# - Goal: Verify that np.linalg.solve(Mat, ColVec) returns a ColVec with
+#         correct values, not a plain ndarray.
+# - Source: Issue #50 — __array_function__ preserves type through np.linalg.
+# - Expected: isinstance(result, ColVec), shape (2,1), values match solution.
+
+## Test: test_array_function_linalg_eig
+# - Goal: Verify that np.linalg.eig(Mat) returns a tuple where eigenvalues
+#         are plain ndarray (1D) and eigenvectors are Mat (2D).
+# - Source: Issue #50 — tuple results apply type rules per element.
+# - Expected: eigenvalues not _VecBase, eigenvectors isinstance Mat.
+
+## Test: test_array_function_sort
+# - Goal: Verify that np.sort(ColVec, axis=0) returns ColVec with sorted values.
+# - Source: Issue #50 — non-ufunc functions preserve type via __array_function__.
+# - Expected: isinstance(result, ColVec), values sorted ascending.
+
+## Test: test_array_function_concatenate
+# - Goal: Verify that np.concatenate([ColVec, ColVec], axis=0) returns ColVec.
+# - Source: Issue #50 — arrays nested in list args are handled correctly.
+# - Expected: isinstance(result, ColVec), shape (4,1).
+
+## Test: test_array_function_reshape
+# - Goal: Verify that np.reshape(ColVec(3,1), (1,-1)) returns Mat(1,3).
+# - Source: Issue #50 — shape (1,3) maps to Mat per _apply_type_rules.
+# - Expected: isinstance(result, Mat), shape (1,3).
+
+## Test: test_array_function_scalar_result
+# - Goal: Verify that np.sum(ColVec) returns a plain scalar, not wrapped.
+# - Source: Issue #50 — scalar results pass through _apply_type_rules unchanged.
+# - Expected: result is not a _VecBase subclass.
+
+## Test: test_array_function_plain_ndarray_passthrough
+# - Goal: Verify that NumPy functions called with only plain ndarrays do not
+#         produce nemopy types.
+# - Source: Issue #50 — __array_function__ only dispatches for _VecBase inputs.
+# - Expected: type(result) is np.ndarray.
+
+
+class TestArrayFunction:
+
+    def test_array_function_linalg_solve(self):
+        """np.linalg.solve(Mat, ColVec) returns ColVec with correct values."""
+        A = Mat(np.array([[1, 2], [3, 5]], dtype=float))
+        b = ColVec(np.array([[5], [13]], dtype=float))
+        x = np.linalg.solve(A, b)
+        assert isinstance(x, ColVec)
+        assert x.shape == (2, 1)
+        np.testing.assert_allclose(np.asarray(x), np.array([[1], [2]]))
+
+    def test_array_function_linalg_eig(self):
+        """np.linalg.eig(Mat) returns (plain ndarray, Mat) tuple."""
+        A = Mat(np.array([[1, 0], [0, 2]], dtype=float))
+        vals, vecs = np.linalg.eig(A)
+        assert not isinstance(vals, _VecBase)
+        assert isinstance(vecs, Mat)
+        assert vecs.shape == (2, 2)
+
+    def test_array_function_sort(self):
+        """np.sort(ColVec, axis=0) returns ColVec with sorted values."""
+        u = ColVec(np.array([[3], [1], [2]], dtype=float))
+        result = np.sort(u, axis=0)
+        assert isinstance(result, ColVec)
+        assert result.shape == (3, 1)
+        np.testing.assert_array_equal(
+            np.asarray(result), np.array([[1], [2], [3]])
+        )
+
+    def test_array_function_concatenate(self):
+        """np.concatenate([ColVec, ColVec], axis=0) returns ColVec."""
+        u = ColVec(np.array([[1], [2]], dtype=float))
+        v = ColVec(np.array([[3], [4]], dtype=float))
+        result = np.concatenate([u, v], axis=0)
+        assert isinstance(result, ColVec)
+        assert result.shape == (4, 1)
+        np.testing.assert_array_equal(
+            np.asarray(result), np.array([[1], [2], [3], [4]])
+        )
+
+    def test_array_function_reshape(self):
+        """np.reshape(ColVec, (1, -1)) returns Mat."""
+        u = ColVec(np.array([[1], [2], [3]], dtype=float))
+        result = np.reshape(u, (1, -1))
+        assert isinstance(result, Mat)
+        assert result.shape == (1, 3)
+
+    def test_array_function_scalar_result(self):
+        """np.sum(ColVec) returns a plain scalar, not a _VecBase subclass."""
+        u = ColVec(np.array([[1], [2], [3]], dtype=float))
+        result = np.sum(u)
+        assert not isinstance(result, _VecBase)
+
+    def test_array_function_plain_ndarray_passthrough(self):
+        """NumPy function on plain ndarray does not produce nemopy types."""
+        a = np.array([[3], [1], [2]], dtype=float)
+        result = np.sort(a, axis=0)
+        assert type(result) is np.ndarray
+        assert not isinstance(result, _VecBase)

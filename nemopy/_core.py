@@ -78,6 +78,25 @@ def _apply_type_rules(result):
     return np.asarray(result)
 
 
+HANDLED_FUNCTIONS = {}
+
+
+def implements(np_function):
+    """Register an __array_function__ override."""
+    def decorator(func):
+        HANDLED_FUNCTIONS[np_function] = func
+        return func
+    return decorator
+
+
+def _strip_vecbase(arg):
+    if isinstance(arg, _VecBase):
+        return np.asarray(arg)
+    if isinstance(arg, (list, tuple)):
+        return type(arg)(_strip_vecbase(a) for a in arg)
+    return arg
+
+
 class _VecBase(np.ndarray):
     """Non-public base class for ColVec and Mat.
 
@@ -116,6 +135,25 @@ class _VecBase(np.ndarray):
                 return tuple(_apply_type_rules(r) for r in results)
 
             return _apply_type_rules(results)
+
+    def __array_function__(self, func, types, args, kwargs):
+        if not all(issubclass(t, _VecBase) for t in types):
+            return NotImplemented
+        if func in HANDLED_FUNCTIONS:
+            return HANDLED_FUNCTIONS[func](*args, **kwargs)
+        args_as_np = tuple(_strip_vecbase(a) for a in args)
+        kwargs_as_np = {
+            k: _strip_vecbase(v) for k, v in kwargs.items()
+        }
+        result = func(*args_as_np, **kwargs_as_np)
+        if isinstance(result, np.ndarray):
+            return _apply_type_rules(result)
+        if isinstance(result, tuple):
+            return tuple(
+                _apply_type_rules(r) if isinstance(r, np.ndarray) else r
+                for r in result
+            )
+        return result
 
     @property
     def T(self):
