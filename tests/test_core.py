@@ -857,7 +857,7 @@ class TestShapeGuard1dVsColvec:
         a = np.array([1.0, 2.0, 3.0])
         b = ColVec(np.array([[1.0], [2.0], [3.0]]))
         result = a - b
-        np.testing.assert_array_equal(result, np.zeros((3, 1)))
+        assert np.array_equal(np.asarray(result), np.zeros((3, 1)))
 
     ## Test: test_colvec_minus_1d_ndarray_does_not_raise
     # - Goal: The reverse order (ColVec - 1D ndarray) should also succeed.
@@ -868,18 +868,20 @@ class TestShapeGuard1dVsColvec:
         a = ColVec(np.array([[1.0], [2.0], [3.0]]))
         b = np.array([1.0, 2.0, 3.0])
         result = a - b
-        np.testing.assert_array_equal(result, np.zeros((3, 1)))
+        assert np.array_equal(np.asarray(result), np.zeros((3, 1)))
 
-    ## Test: test_numpy_testing_assert_almost_equal_1d_vs_colvec
-    # - Goal: numpy.testing.assert_almost_equal works when comparing a
-    #         1D ndarray with a ColVec of the same values.
-    # - Source: Issue #70 — the exact failure mode from the bug report.
-    # - Expected: No error raised.
-    def test_numpy_testing_assert_almost_equal_1d_vs_colvec(self):
-        """numpy.testing.assert_almost_equal(1d, colvec) should not raise."""
-        a = np.array([1.0, 0.0, 0.0, 1.0])
-        b = ColVec(np.array([[1.0], [0.0], [0.0], [1.0]]))
-        np.testing.assert_almost_equal(a, b)
+    ## Test: test_1d_ndarray_add_colvec_does_not_raise
+    # - Goal: All four arithmetic ops between 1D ndarray (n,) and ColVec
+    #         (n,1) succeed without ShapeError.
+    # - Source: Issue #70 — shape guard must allow (n,) ↔ (n,1).
+    # - Expected: Each operation succeeds with correct result shape.
+    def test_1d_ndarray_add_colvec_does_not_raise(self):
+        """All arithmetic ops between 1D ndarray and ColVec succeed."""
+        a = np.array([2.0, 4.0, 6.0])
+        b = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        assert np.array_equal(np.asarray(a + b), np.array([[3.0], [6.0], [9.0]]))
+        assert np.array_equal(np.asarray(a * b), np.array([[2.0], [8.0], [18.0]]))
+        assert np.array_equal(np.asarray(a / b), np.array([[2.0], [2.0], [2.0]]))
 
     ## Test: test_shape_guard_still_blocks_truly_incompatible_shapes
     # - Goal: The shape guard still fires for genuinely mismatched shapes

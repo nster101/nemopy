@@ -13,16 +13,10 @@ import re
 
 
 NEMOPY_XFAILS_EXACT = {
-    # ---- Intentional nemopy guardrails (DESIGN.md §7.1, §1.2 Goal 1) ----
-    "TestSVDHermitian::test_herm_cases":
-        "nemopy ShapeError: shape guard blocks 1D vs (n,1) subtraction "
-        "inside numpy.testing (intentional guardrail, §7.1)",
-    "TestQR::test_mode_all_but_economic":
-        "nemopy ShapeError: shape guard blocks 1D vs (n,1) subtraction "
-        "inside numpy.testing (intentional guardrail, §7.1)",
+    # ---- Comparison broadcasting inside np.isclose ----
     "TestTensorinv::test_tensorinv_result":
-        "nemopy ShapeError: shape guard blocks 1D vs (n,1) subtraction "
-        "inside numpy.testing (intentional guardrail, §7.1)",
+        "np.isclose comparison broadcasting: 1D ndarray == ColVec produces "
+        "(n,n) boolean, causing bitwise_or TypeError in assert_allclose",
 
     # ---- nemopy __getitem__ override interferes with numpy.testing ----
     "TestSVD::test_empty_identity":
