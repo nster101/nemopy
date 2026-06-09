@@ -18,10 +18,6 @@ NEMOPY_XFAILS_EXACT = {
         "np.isclose comparison broadcasting: 1D ndarray == ColVec produces "
         "(n,n) boolean, causing bitwise_or TypeError in assert_allclose",
 
-    # ---- nemopy eye() signature (DESIGN.md §5.8) ----
-    "TestVdot::test_basic":
-        "nemopy eye() does not accept dtype kwarg (§5.8: eye(n) only)",
-
     # ---- NumPy v2.1->v2.4 API changes (not nemopy-related) ----
     "TestNonarrayArgs::test_reshape_shape_arg":
         "NumPy API change: reshape() 'newshape' kwarg removed in v2.4",
