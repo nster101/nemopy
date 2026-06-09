@@ -843,3 +843,52 @@ class TestArrayFunction:
         result = np.sort(a, axis=0)
         assert type(result) is np.ndarray
         assert not isinstance(result, _VecBase)
+
+
+class TestShapeGuard1dVsColvec:
+    ## Test: test_1d_ndarray_minus_colvec_does_not_raise
+    # - Goal: Element-wise subtraction between a 1D ndarray (n,) and a
+    #         ColVec (n,1) should succeed, not raise ShapeError.
+    # - Source: Issue #70 — shape guard blocks numpy.testing internals
+    #           that compute abs(x - y) between 1D linalg results and ColVec.
+    # - Expected: Operation succeeds; result has correct values.
+    def test_1d_ndarray_minus_colvec_does_not_raise(self):
+        """1D ndarray (n,) minus ColVec (n,1) should not raise ShapeError."""
+        a = np.array([1.0, 2.0, 3.0])
+        b = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        result = a - b
+        np.testing.assert_array_equal(result, np.zeros((3, 1)))
+
+    ## Test: test_colvec_minus_1d_ndarray_does_not_raise
+    # - Goal: The reverse order (ColVec - 1D ndarray) should also succeed.
+    # - Source: Issue #70 — __sub__ and __rsub__ both call _check_shapes.
+    # - Expected: Operation succeeds; result has correct values.
+    def test_colvec_minus_1d_ndarray_does_not_raise(self):
+        """ColVec (n,1) minus 1D ndarray (n,) should not raise ShapeError."""
+        a = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        b = np.array([1.0, 2.0, 3.0])
+        result = a - b
+        np.testing.assert_array_equal(result, np.zeros((3, 1)))
+
+    ## Test: test_numpy_testing_assert_almost_equal_1d_vs_colvec
+    # - Goal: numpy.testing.assert_almost_equal works when comparing a
+    #         1D ndarray with a ColVec of the same values.
+    # - Source: Issue #70 — the exact failure mode from the bug report.
+    # - Expected: No error raised.
+    def test_numpy_testing_assert_almost_equal_1d_vs_colvec(self):
+        """numpy.testing.assert_almost_equal(1d, colvec) should not raise."""
+        a = np.array([1.0, 0.0, 0.0, 1.0])
+        b = ColVec(np.array([[1.0], [0.0], [0.0], [1.0]]))
+        np.testing.assert_almost_equal(a, b)
+
+    ## Test: test_shape_guard_still_blocks_truly_incompatible_shapes
+    # - Goal: The shape guard still fires for genuinely mismatched shapes
+    #         (e.g., (3,1) vs (4,1)), ensuring we haven't over-relaxed.
+    # - Source: DESIGN.md §7.1 — shape guard contract.
+    # - Expected: ShapeError raised.
+    def test_shape_guard_still_blocks_truly_incompatible_shapes(self):
+        """Shape guard still raises for genuinely different element counts."""
+        a = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        b = ColVec(np.array([[1.0], [2.0], [3.0], [4.0]]))
+        with pytest.raises(ShapeError):
+            _ = a + b
