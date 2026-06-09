@@ -15,6 +15,18 @@ def _is_scalar(x):
     return False
 
 
+def _coerce_1d(vecbase, other):
+    """Reshape a 1D ndarray to (n,1) when paired with a (n,1) _VecBase."""
+    if (isinstance(other, np.ndarray)
+            and not isinstance(other, _VecBase)
+            and other.ndim == 1
+            and vecbase.ndim == 2
+            and vecbase.shape[1] == 1
+            and other.shape[0] == vecbase.shape[0]):
+        return other.reshape(-1, 1)
+    return other
+
+
 def _check_shapes(a, b, op_name):
     """Raise ShapeError if a and b are both arrays with different shapes."""
     if _is_scalar(a) or _is_scalar(b):
@@ -30,41 +42,49 @@ def _check_shapes(a, b, op_name):
 
 
 def __mul__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(self, other, "*")
     return super(_VecBase, self).__mul__(other)
 
 
 def __rmul__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(other, self, "*")
     return super(_VecBase, self).__rmul__(other)
 
 
 def __add__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(self, other, "+")
     return super(_VecBase, self).__add__(other)
 
 
 def __radd__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(other, self, "+")
     return super(_VecBase, self).__radd__(other)
 
 
 def __sub__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(self, other, "-")
     return super(_VecBase, self).__sub__(other)
 
 
 def __rsub__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(other, self, "-")
     return super(_VecBase, self).__rsub__(other)
 
 
 def __truediv__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(self, other, "/")
     return super(_VecBase, self).__truediv__(other)
 
 
 def __rtruediv__(self, other):
+    other = _coerce_1d(self, other)
     _check_shapes(other, self, "/")
     return super(_VecBase, self).__rtruediv__(other)
 

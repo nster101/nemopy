@@ -843,3 +843,54 @@ class TestArrayFunction:
         result = np.sort(a, axis=0)
         assert type(result) is np.ndarray
         assert not isinstance(result, _VecBase)
+
+
+class TestShapeGuard1dVsColvec:
+    ## Test: test_1d_ndarray_minus_colvec_does_not_raise
+    # - Goal: Element-wise subtraction between a 1D ndarray (n,) and a
+    #         ColVec (n,1) should succeed, not raise ShapeError.
+    # - Source: Issue #70 — shape guard blocks numpy.testing internals
+    #           that compute abs(x - y) between 1D linalg results and ColVec.
+    # - Expected: Operation succeeds; result has correct values.
+    def test_1d_ndarray_minus_colvec_does_not_raise(self):
+        """1D ndarray (n,) minus ColVec (n,1) should not raise ShapeError."""
+        a = np.array([1.0, 2.0, 3.0])
+        b = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        result = a - b
+        assert np.array_equal(np.asarray(result), np.zeros((3, 1)))
+
+    ## Test: test_colvec_minus_1d_ndarray_does_not_raise
+    # - Goal: The reverse order (ColVec - 1D ndarray) should also succeed.
+    # - Source: Issue #70 — __sub__ and __rsub__ both call _check_shapes.
+    # - Expected: Operation succeeds; result has correct values.
+    def test_colvec_minus_1d_ndarray_does_not_raise(self):
+        """ColVec (n,1) minus 1D ndarray (n,) should not raise ShapeError."""
+        a = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        b = np.array([1.0, 2.0, 3.0])
+        result = a - b
+        assert np.array_equal(np.asarray(result), np.zeros((3, 1)))
+
+    ## Test: test_1d_ndarray_add_colvec_does_not_raise
+    # - Goal: All four arithmetic ops between 1D ndarray (n,) and ColVec
+    #         (n,1) succeed without ShapeError.
+    # - Source: Issue #70 — shape guard must allow (n,) ↔ (n,1).
+    # - Expected: Each operation succeeds with correct result shape.
+    def test_1d_ndarray_add_colvec_does_not_raise(self):
+        """All arithmetic ops between 1D ndarray and ColVec succeed."""
+        a = np.array([2.0, 4.0, 6.0])
+        b = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        assert np.array_equal(np.asarray(a + b), np.array([[3.0], [6.0], [9.0]]))
+        assert np.array_equal(np.asarray(a * b), np.array([[2.0], [8.0], [18.0]]))
+        assert np.array_equal(np.asarray(a / b), np.array([[2.0], [2.0], [2.0]]))
+
+    ## Test: test_shape_guard_still_blocks_truly_incompatible_shapes
+    # - Goal: The shape guard still fires for genuinely mismatched shapes
+    #         (e.g., (3,1) vs (4,1)), ensuring we haven't over-relaxed.
+    # - Source: DESIGN.md §7.1 — shape guard contract.
+    # - Expected: ShapeError raised.
+    def test_shape_guard_still_blocks_truly_incompatible_shapes(self):
+        """Shape guard still raises for genuinely different element counts."""
+        a = ColVec(np.array([[1.0], [2.0], [3.0]]))
+        b = ColVec(np.array([[1.0], [2.0], [3.0], [4.0]]))
+        with pytest.raises(ShapeError):
+            _ = a + b
