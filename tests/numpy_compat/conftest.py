@@ -29,10 +29,6 @@ NEMOPY_XFAILS_EXACT = {
         "nemopy Mat.__getitem__ boolean indexing override conflicts with "
         "numpy.testing.assert_equal internal comparison",
 
-    # ---- nemopy eye() signature (DESIGN.md §5.8) ----
-    "TestVdot::test_basic":
-        "nemopy eye() does not accept dtype kwarg (§5.8: eye(n) only)",
-
     # ---- NumPy v2.1->v2.4 API changes (not nemopy-related) ----
     "TestNonarrayArgs::test_reshape_shape_arg":
         "NumPy API change: reshape() 'newshape' kwarg removed in v2.4",
