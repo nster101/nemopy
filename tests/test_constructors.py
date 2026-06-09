@@ -197,6 +197,30 @@ class TestEyeConstructor:
         assert I.shape == (3, 3)
         np.testing.assert_array_equal(np.asarray(I), np.eye(3))
 
+    ## Test: test_eye_accepts_dtype_kwarg
+    # - Goal: eye(n, dtype=...) accepts a dtype kwarg without raising
+    #         TypeError, always producing float64 per §3.
+    # - Source: Issue #68 — np.eye(n, dtype=...) through nemopy fails.
+    # - Expected: No TypeError; result dtype is float64; shape is (n,n).
+    def test_eye_accepts_dtype_kwarg(self):
+        """eye(n, dtype=...) accepts dtype kwarg, result is always float64."""
+        I = eye(3, dtype=np.float32)
+        assert isinstance(I, Mat)
+        assert I.shape == (3, 3)
+        assert I.dtype == np.float64
+
+    ## Test: test_eye_accepts_M_and_k_kwargs
+    # - Goal: eye(n, M=m, k=k) accepts NumPy-compatible kwargs.
+    # - Source: Issue #68 — fuller compat with np.eye() signature.
+    # - Expected: Non-square identity with offset diagonal.
+    def test_eye_accepts_M_and_k_kwargs(self):
+        """eye(n, M=m, k=k) produces non-square identity with offset."""
+        I = eye(3, M=4, k=1)
+        assert isinstance(I, Mat)
+        assert I.shape == (3, 4)
+        expected = np.eye(3, M=4, k=1)
+        assert np.array_equal(np.asarray(I), expected)
+
 
 class TestAsColConstructor:
     def test_as_col_from_list(self):
