@@ -681,6 +681,9 @@ class Mat(_VecBase):
         --------
         ColVec.__getitem__ : Indexing semantics for column vectors.
         """
+        if isinstance(key, np.ndarray) and key.dtype == np.bool_:
+            return np.asarray(super().__getitem__(key))
+
         result = super().__getitem__(key)
 
         if not isinstance(result, np.ndarray) or result.ndim == 0:
@@ -693,7 +696,6 @@ class Mat(_VecBase):
                     return ColVec(result.reshape(-1, 1))
                 if isinstance(row_key, (int, np.integer)):
                     return Mat(result.reshape(1, -1))
-            # For ambiguous 1D indexing, preserve column-first convention.
             return ColVec(result.reshape(-1, 1))
 
         if result.ndim == 2:
