@@ -487,6 +487,35 @@ class TestMatGetItem:
             np.asarray(result), np.array([[76.0], [228.0], [380.0]])
         )
 
+    ## Test: test_mat_getitem_boolean_mask_returns_plain_ndarray
+    # - Goal: Boolean mask indexing on a Mat returns a plain 1D ndarray,
+    #         matching NumPy's flattening behaviour, not a ColVec.
+    # - Source: DESIGN.md §6.3 — boolean column masks use tuple keys
+    #           (A[:, mask]); a flat boolean mask is unspecified and should
+    #           fall through to ndarray behaviour.
+    # - Expected: 1D ndarray of matching elements.
+    def test_mat_getitem_boolean_mask_returns_plain_ndarray(self):
+        """Flat boolean mask on Mat returns plain 1D ndarray, not ColVec."""
+        A = Mat(np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=float))
+        mask = A > 5
+        result = A[mask]
+        assert type(result) is np.ndarray
+        assert result.ndim == 1
+        np.testing.assert_array_equal(result, np.array([6.0, 7.0, 8.0, 9.0]))
+
+    ## Test: test_mat_numpy_testing_assert_equal_works
+    # - Goal: numpy.testing.assert_equal works with Mat objects without
+    #         raising IndexError from boolean indexing conflicts.
+    # - Source: Issue #69 — assert_equal internally does A[bool_mask] which
+    #           must not be intercepted by Mat.__getitem__ column semantics.
+    # - Expected: No error raised.
+    def test_mat_numpy_testing_assert_equal_works(self):
+        """numpy.testing.assert_equal works with Mat objects."""
+        from numpy.linalg import matrix_power
+        M = Mat(np.eye(4))
+        mz = matrix_power(M, 0)
+        np.testing.assert_equal(mz, np.eye(4))
+
     def test_mat_det_identity_returns_float_one(self):
         """Mat.det(identity) returns 1.0 as Python float."""
         A = Mat(np.eye(3))
