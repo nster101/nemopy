@@ -1088,3 +1088,112 @@ polars = ["polars>=0.19"]
 ```
 
 Install with: `pip install "nemopy[polars]"`
+
+---
+
+## 20. Feature Roadmap and Rust Acceleration
+
+> **Status:** roadmap. This section records the agreed direction and the
+> contract every roadmap feature must satisfy. Signatures shown in the
+> referenced issues are provisional until a feature is implemented, at which
+> point its final surface is promoted into the appropriate numbered section
+> of this spec and becomes immutable under §1 of `CLAUDE.md`.
+
+### 20.1 Strategy
+
+nemopy keeps NumPy as its computational base and grows a Rust extension
+layer (`_rust_core`, PyO3 + maturin) that progressively takes over the hot
+paths. NumPy is the BLAS; Rust is the application layer. Features ship in
+two tiers:
+
+1. **Fast path (required):** a Rust kernel in `_rust_core`. Every roadmap
+   feature below is only considered useful at real-world scale with its
+   Rust implementation — this is a hard requirement, not an optimization.
+2. **Fallback path (required):** a pure-Python/NumPy implementation with
+   identical semantics. `nemopy` must remain pip-installable with `numpy`
+   as the only hard dependency. The extension accelerates; it never gates
+   functionality.
+
+Both paths are exercised by the same test suite. A feature is not complete
+until results agree across paths within documented tolerances.
+
+### 20.2 Rust core layout
+
+```
+nemopy/
+├── _rust_core/          # PyO3 extension module (maturin-managed)
+│   ├── src/
+│   │   ├── lib.rs       # Module entry point
+│   │   ├── ops.rs       # Fused shape-guard arithmetic, batch kernels
+│   │   ├── stats.rs     # Column-wise statistics, EWMA/rolling covariance
+│   │   ├── decomp.rs    # Decompositions (SVD, QR, LU, LDU, Schur, Jordan,
+│   │   │                #   Polar, QDR, eigen, power iteration)
+│   │   ├── linalg.rs    # Gaussian elimination, REF/RREF, rank, nullspace
+│   │   ├── optim.rs     # Simplex, dual simplex, interior point,
+│   │   │                #   branch-and-bound (LP/IP/MILP)
+│   │   ├── network.rs   # Graph algorithms (shortest path, max flow,
+│   │   │                #   min cost flow, assignment, MST)
+│   │   ├── markov.rs    # Markov chain analysis and simulation
+│   │   ├── sim.rs       # Monte Carlo, queueing, random variates
+│   │   └── lazy.rs      # Expression-graph optimizer and fused executor
+│   └── Cargo.toml
+└── ...
+```
+
+Key crates: `faer` (pure-Rust linear algebra, no system LAPACK), `rayon`
+(data parallelism), `rand` (simulation RNG), PyO3 `numpy` (zero-copy
+buffer interop).
+
+### 20.3 Interop contract
+
+- **Zero-copy:** `Mat`/`ColVec` buffers cross the FFI boundary as views via
+  the PyO3 `numpy` crate. Kernels never copy inputs or outputs unless a
+  layout change is mathematically required.
+- **Type persistence:** Rust kernels return buffers that the Python layer
+  wraps back into `Mat`/`ColVec` per the §4 shape rules. No plain ndarrays
+  escape from nemopy APIs.
+- **GIL:** kernels release the GIL for the duration of computation; Rayon
+  provides intra-kernel parallelism.
+
+### 20.4 Feature domains
+
+| Domain | Issues | Rust modules |
+|---|---|---|
+| Core decompositions (SVD, QR, LU, Cholesky, eig, eigh) | #76 | `decomp.rs` |
+| Advanced decompositions (LDU, QDR, Schur, Jordan, Polar, diagonalize) | #84 | `decomp.rs` |
+| Gaussian elimination, Gauss-Jordan, REF/RREF, rank, nullspace | #85 | `linalg.rs` |
+| Statistical methods (mean/std/var/norm/cov/corr, column-first) | #77 | `stats.rs` |
+| DataFrame-as-matrix bridge (`NamedMat`) | #78 | `ops.rs` |
+| Financial/risk primitives (portfolio, EWMA/rolling cov, factor models) | #79 | `stats.rs`, `sim.rs` |
+| Batch operations (`BatchMat`, `BatchColVec`) | #80 | `ops.rs` |
+| Lazy evaluation and expression optimization | #81 | `lazy.rs` |
+| Markov chains, DTMC/CTMC, simulation | #86 | `markov.rs` |
+| AHP/ANP multi-criteria decision methods | #87 | `decomp.rs` |
+| Linear programming (Simplex, dual simplex, LP/IP/MILP) | #91 | `optim.rs` |
+| Network optimization (shortest path, max flow, assignment) | #92 | `network.rs` |
+| Stochastic OR (Monte Carlo, queueing, discrete-event simulation) | #93 | `sim.rs` |
+
+### 20.5 Phases
+
+1. PyO3/maturin scaffolding; one fused kernel benchmarked against the
+   pure-Python path.
+2. Hot-path replacement of the top profiled bottlenecks.
+3. Decompositions (#76, #84) and elimination (#85).
+4. LP/IP/MILP solvers (#91).
+5. Network optimization (#92).
+6. Stochastic simulation (#86, #93) with Rayon parallelism.
+7. Financial/risk primitives (#79).
+8. Optional GPU dispatch (wgpu/CUDA) — exploratory.
+
+Ecosystem compatibility (pandas, polars, matplotlib, scikit-learn, scipy,
+integration workflows) is validated continuously by the
+`tests/test_compat_*.py` and `tests/test_integration_workflow.py` suites
+and is a prerequisite for every phase: no Rust kernel may regress a compat
+test.
+
+### 20.6 Issue tracker as spec annex
+
+Each issue listed in §20.4 carries the working API sketch, design
+principles, and Rust kernel requirements for its domain, and is kept
+current as design evolves. Issue #75 is the umbrella record for the Rust
+core and its phase plan.
