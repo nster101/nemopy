@@ -24,11 +24,6 @@ NEMOPY_XFAILS_EXACT = {
         "nemopy ShapeError: shape guard blocks 1D vs (n,1) subtraction "
         "inside numpy.testing (intentional guardrail, §7.1)",
 
-    # ---- nemopy __getitem__ override interferes with numpy.testing ----
-    "TestSVD::test_empty_identity":
-        "nemopy Mat.__getitem__ boolean indexing override conflicts with "
-        "numpy.testing.assert_equal internal comparison",
-
     # ---- nemopy eye() signature (DESIGN.md §5.8) ----
     "TestVdot::test_basic":
         "nemopy eye() does not accept dtype kwarg (§5.8: eye(n) only)",
@@ -72,12 +67,6 @@ NEMOPY_XFAILS_EXACT = {
 
 NEMOPY_XFAILS_PATTERN = {
     # Parametrized tests matched by pattern (substring match OK here)
-    "TestMatrixPower::test_power_is_zero":
-        "nemopy Mat.__getitem__ boolean indexing override conflicts with "
-        "numpy.testing.assert_equal internal comparison",
-    "TestMatrixPower::test_power_is_minus_one":
-        "nemopy Mat.__getitem__ boolean indexing override conflicts with "
-        "numpy.testing.assert_equal internal comparison",
     "TestFloatExceptions::test_floating_exceptions":
         "NumPy API change: finfo._machar removed after v2.1",
     "TestIO::test_malformed":
