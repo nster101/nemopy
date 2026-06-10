@@ -972,3 +972,26 @@ class Mat(_VecBase):
         if schema is None:
             schema = [f"col_{i}" for i in range(arr.shape[1])]
         return pl.from_numpy(arr, schema=schema)
+
+
+def _load_rust_core():
+    """Import the optional ``_rust_core`` extension (issue #75).
+
+    Returns the compiled module when it is importable and structurally
+    valid, else ``None``. The bare crate source directory
+    ``nemopy/_rust_core/`` is importable as an empty namespace package,
+    so validity is checked by attribute rather than import success alone.
+    """
+    import importlib
+
+    try:
+        ext = importlib.import_module("nemopy._rust_core")
+    except ImportError:
+        return None
+    if not hasattr(ext, "rust_core_version"):
+        return None
+    ext.register_shape_error(ShapeError)
+    return ext
+
+
+_RUST = _load_rust_core()

@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 
+from nemopy import _core
 from nemopy._core import ConventionWarning, ShapeError, _VecBase
 
 
@@ -67,6 +68,14 @@ def __radd__(self, other):
 
 def __sub__(self, other):
     other = _coerce_1d(self, other)
+    rust = _core._RUST
+    if (
+        rust is not None
+        and isinstance(other, _VecBase)
+        and self.dtype == np.float64
+        and other.dtype == np.float64
+    ):
+        return _core._apply_type_rules(rust.fused_sub(self, other))
     _check_shapes(self, other, "-")
     return super(_VecBase, self).__sub__(other)
 
