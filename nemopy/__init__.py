@@ -16,6 +16,7 @@ from nemopy._core import ColVec, Mat, ShapeError, ConventionWarning  # noqa: F40
 from nemopy._constructors import _c, _m, mat, eye, as_col, as_mat  # noqa: F401
 from nemopy import _operators  # noqa: F401
 from nemopy import _stats  # noqa: F401
+from nemopy import _decompositions  # noqa: F401
 
 __all__ = [
     "_c",
