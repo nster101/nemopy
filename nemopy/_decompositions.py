@@ -184,3 +184,251 @@ Mat.lu = _mat_lu
 Mat.cholesky = _mat_cholesky
 Mat.eig = _mat_eig
 Mat.eigh = _mat_eigh
+
+LDUResult = namedtuple("LDUResult", ["L", "D", "U"])
+QDRResult = namedtuple("QDRResult", ["Q", "D", "R"])
+SchurResult = namedtuple("SchurResult", ["T", "Z"])
+PolarResult = namedtuple("PolarResult", ["U", "P"])
+DiagonalizeResult = namedtuple("DiagonalizeResult", ["P", "D"])
+JordanResult = namedtuple("JordanResult", ["J", "P"])
+
+
+def _ldu_fallback(a):
+    n = a.shape[0]
+    scale = max(1.0, float(np.abs(a).max()))
+    u = a.copy()
+    low = np.eye(n)
+    for k in range(n):
+        piv = u[k, k]
+        if abs(piv) < 1e-12 * scale:
+            raise ValueError(
+                f"LDU requires nonzero pivots without row exchanges; zero "
+                f"pivot at position {k}. Use lu() for a pivoted factorization."
+            )
+        f = u[k + 1:, k] / piv
+        low[k + 1:, k] = f
+        u[k + 1:, k:] -= np.outer(f, u[k, k:])
+    d = np.diag(u).copy()
+    u = u / d[:, None]
+    return low, d, u
+
+
+def _mat_ldu(self):
+    """LDU factorization ``A = L @ D @ U`` without row exchanges.
+
+    ``L`` and ``U`` are unit triangular; ``D`` is diagonal.
+
+    Raises
+    ------
+    ShapeError
+        If the matrix is not square.
+    ValueError
+        If elimination hits a zero pivot (pivoting would be required);
+        use :meth:`lu` instead.
+    """
+    a = _require_square(self, "ldu")
+    rust = _core._RUST
+    if rust is not None:
+        low, d, u = rust.ldu(a)
+    else:
+        low, d, u = _ldu_fallback(a)
+    return LDUResult(Mat(np.asarray(low)), Mat(np.diag(np.asarray(d))),
+                     Mat(np.asarray(u)))
+
+
+def _mat_qdr(self):
+    """QDR factorization ``A = Q @ D @ R``: QR with scaling split out.
+
+    ``Q`` is the thin QR orthogonal factor, ``D`` the diagonal of the QR
+    ``R`` factor, and ``R`` the rescaled upper-triangular factor with
+    unit diagonal.
+
+    Raises
+    ------
+    ValueError
+        If the QR ``R`` factor has a zero diagonal entry (rank
+        deficiency), so the unit-diagonal rescaling does not exist.
+    """
+    q, r = _mat_qr(self)
+    r = np.asarray(r)
+    d = np.diag(r).copy()
+    if np.any(d == 0.0):
+        raise ValueError(
+            "QDR requires a full-rank R factor (zero diagonal entry found)"
+        )
+    return QDRResult(Mat(np.asarray(q)), Mat(np.diag(d)), Mat(r / d[:, None]))
+
+
+def _mat_schur(self):
+    """Real Schur decomposition ``A = Z @ T @ Z.T``.
+
+    LAPACK-delegated via SciPy on both paths pending a ``_rust_core``
+    Schur kernel (issue #84 interim).
+
+    Raises
+    ------
+    ShapeError
+        If the matrix is not square.
+    ImportError
+        If SciPy is not installed.
+    """
+    a = _require_square(self, "schur")
+    try:
+        from scipy.linalg import schur as _scipy_schur
+    except ImportError as exc:
+        raise ImportError(
+            "Mat.schur() currently requires SciPy (LAPACK-delegated path; "
+            "_rust_core Schur kernel pending)"
+        ) from exc
+    t, z = _scipy_schur(a, output="real")
+    return SchurResult(Mat(t), Mat(z))
+
+
+def _mat_polar(self):
+    """Left polar decomposition ``A = U @ P``.
+
+    ``U`` has orthonormal columns and ``P`` is symmetric positive
+    semidefinite. Derived from the thin SVD, so it uses the Rust SVD
+    kernel when available.
+    """
+    u, s, vt = _mat_svd(self)
+    u, s, vt = np.asarray(u), np.asarray(s).ravel(), np.asarray(vt)
+    return PolarResult(Mat(u @ vt), Mat(vt.T @ np.diag(s) @ vt))
+
+
+def _mat_diagonalize(self):
+    """Similarity diagonalization ``A = P @ D @ P^-1``.
+
+    Returns
+    -------
+    DiagonalizeResult
+        ``P`` (eigenvector columns) and diagonal ``D``; nemopy types for
+        a real spectrum, plain complex ndarrays otherwise (per §4).
+
+    Raises
+    ------
+    ShapeError
+        If the matrix is not square.
+    ValueError
+        If the matrix is not diagonalizable (defective eigenbasis).
+    """
+    a = _require_square(self, "diagonalize")
+    n = a.shape[0]
+    result = _mat_eig(self)
+    vecs = np.asarray(result.vectors)
+    if np.linalg.matrix_rank(vecs) < n:
+        raise ValueError("matrix is not diagonalizable")
+    vals = np.asarray(result.values).ravel()
+    if np.iscomplexobj(vals):
+        return DiagonalizeResult(vecs, np.diag(vals))
+    return DiagonalizeResult(Mat(vecs), Mat(np.diag(vals)))
+
+
+def _nullspace_basis(m, tol):
+    _, s, vt = np.linalg.svd(m)
+    rank = int(np.sum(s > tol)) if s.size else 0
+    return vt[rank:].conj().T
+
+
+def _mat_jordan(self):
+    """Jordan normal form ``A = P @ J @ P^-1`` (issue #84).
+
+    Numerically delicate: eigenvalues are clustered with a tolerance and
+    generalized eigenvector chains are built by the staircase algorithm.
+    Intended for small, well-conditioned matrices; results degrade when
+    eigenvalues are nearly defective without being exactly so.
+
+    Returns
+    -------
+    JordanResult
+        ``J`` (Jordan blocks) and ``P``; nemopy types for a real
+        spectrum, plain complex ndarrays otherwise (per §4).
+
+    Raises
+    ------
+    ShapeError
+        If the matrix is not square.
+    ValueError
+        If a complete generalized eigenbasis cannot be assembled.
+    """
+    a = _require_square(self, "jordan")
+    n = a.shape[0]
+    scale = max(1.0, float(np.abs(a).max()))
+    tol = 1e-8 * scale
+    vals = np.linalg.eigvals(a)
+    clusters = []
+    used = np.zeros(n, dtype=bool)
+    for i in range(n):
+        if used[i]:
+            continue
+        group = [vals[i]]
+        used[i] = True
+        for j in range(i + 1, n):
+            if not used[j] and abs(vals[j] - vals[i]) <= 1e-6 * scale:
+                used[j] = True
+                group.append(vals[j])
+        clusters.append((np.mean(group), len(group)))
+    is_complex = any(abs(np.imag(lam)) > 1e-10 * scale for lam, _ in clusters)
+    dtype = complex if is_complex else float
+    eye = np.eye(n, dtype=dtype)
+    jmat = np.zeros((n, n), dtype=dtype)
+    pmat = np.zeros((n, n), dtype=dtype)
+    col = 0
+    for lam, mult in clusters:
+        lam = complex(lam) if is_complex else float(np.real(lam))
+        b = a.astype(dtype) - lam * eye
+        null_bases = [np.zeros((n, 0), dtype=dtype)]
+        bk = eye.copy()
+        while null_bases[-1].shape[1] < mult and len(null_bases) <= n:
+            bk = bk @ b
+            null_bases.append(_nullspace_basis(bk, tol))
+        grade = len(null_bases) - 1
+        chains = []
+        for k in range(grade, 0, -1):
+            avoid_cols = [null_bases[k - 1]]
+            for chain in chains:
+                if len(chain) > k:
+                    avoid_cols.append(chain[k - 1].reshape(-1, 1))
+            avoid = np.hstack(avoid_cols)
+            if avoid.shape[1]:
+                ua, sa, _ = np.linalg.svd(avoid, full_matrices=False)
+                basis = ua[:, : int(np.sum(sa > tol))]
+            else:
+                basis = np.zeros((n, 0), dtype=dtype)
+            for idx in range(null_bases[k].shape[1]):
+                v = null_bases[k][:, idx]
+                r = v - basis @ (basis.conj().T @ v)
+                if np.linalg.norm(r) > 10 * tol:
+                    head = r / np.linalg.norm(r)
+                    chain = [head]
+                    for _ in range(k - 1):
+                        chain.append(b @ chain[-1])
+                    chain.reverse()
+                    chains.append(chain)
+                    basis = np.hstack([basis, head.reshape(-1, 1)])
+        chains.sort(key=len, reverse=True)
+        for chain in chains:
+            m = len(chain)
+            for g, vec in enumerate(chain):
+                pmat[:, col + g] = vec
+            jmat[col:col + m, col:col + m] = (
+                lam * np.eye(m, dtype=dtype)
+                + np.diag(np.ones(m - 1, dtype=dtype), 1)
+            )
+            col += m
+    if col != n or np.linalg.matrix_rank(pmat, tol=tol) < n:
+        raise ValueError(
+            "Jordan form computation failed to assemble a complete "
+            "generalized eigenbasis"
+        )
+    if is_complex:
+        return JordanResult(jmat, pmat)
+    return JordanResult(Mat(jmat.real), Mat(pmat.real))
+
+
+Mat.ldu = _mat_ldu
+Mat.qdr = _mat_qdr
+Mat.schur = _mat_schur
+Mat.polar = _mat_polar
+Mat.diagonalize = _mat_diagonalize
+Mat.jordan = _mat_jordan

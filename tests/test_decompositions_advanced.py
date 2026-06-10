@@ -91,7 +91,7 @@ def test_schur():
 
 
 def test_polar(backend):
-    A = mat([3, 1], [1, 2], [0, 1])
+    A = mat([3, 1, 0], [1, 2, 1])  # tall (3, 2)
     U, P = A.polar()
     assert isinstance(U, Mat) and isinstance(P, Mat)
     np.testing.assert_allclose(_np(U) @ _np(P), _np(A), atol=1e-9)

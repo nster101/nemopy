@@ -1,7 +1,8 @@
-//! Decomposition kernels (issue #76): LU, Cholesky, thin Householder QR,
-//! symmetric eigendecomposition (cyclic Jacobi) and thin SVD (one-sided
-//! Jacobi). General eig stays LAPACK-delegated on the Python side pending
-//! a faer integration ("NumPy is the BLAS", §20.1).
+//! Decomposition kernels (issues #76, #84): LU, LDU, Cholesky, thin
+//! Householder QR, symmetric eigendecomposition (cyclic Jacobi) and thin
+//! SVD (one-sided Jacobi). General eig/Schur/Jordan stay LAPACK-delegated
+//! on the Python side pending a faer integration (issue #84 blesses a
+//! fallback-primary path for the numerically delicate forms).
 
 use ndarray::{Array1, Array2, ArrayView2};
 use numpy::{PyArray1, PyArray2, PyReadonlyArray2, ToPyArray};
@@ -62,6 +63,58 @@ fn lu<'py>(
     let a = a.as_array();
     let (perm, l, u) = py.allow_threads(|| lu_impl(a));
     Ok((perm, l.to_pyarray(py), u.to_pyarray(py)))
+}
+
+/// LDU without row exchanges; errors on a (near-)zero pivot (issue #84).
+#[pyfunction]
+fn ldu<'py>(
+    py: Python<'py>,
+    a: PyReadonlyArray2<'py, f64>,
+) -> PyResult<(
+    Bound<'py, PyArray2<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray2<f64>>,
+)> {
+    let a = a.as_array();
+    let result = py.allow_threads(|| {
+        let n = a.nrows();
+        let scale = a.iter().fold(0.0f64, |m, &x| m.max(x.abs())).max(1.0);
+        let mut u = a.to_owned();
+        let mut l = Array2::<f64>::eye(n);
+        for k in 0..n {
+            let piv = u[(k, k)];
+            if piv.abs() < 1e-12 * scale {
+                return Err(format!(
+                    "LDU requires nonzero pivots without row exchanges; zero \
+                     pivot at position {}. Use lu() for a pivoted factorization.",
+                    k
+                ));
+            }
+            for i in (k + 1)..n {
+                let f = u[(i, k)] / piv;
+                l[(i, k)] = f;
+                for j in k..n {
+                    u[(i, j)] -= f * u[(k, j)];
+                }
+            }
+        }
+        let d: Vec<f64> = (0..n).map(|i| u[(i, i)]).collect();
+        for i in 0..n {
+            let di = d[i];
+            for j in 0..n {
+                u[(i, j)] /= di;
+            }
+        }
+        Ok((l, d, u))
+    });
+    match result {
+        Ok((l, d, u)) => Ok((
+            l.to_pyarray(py),
+            Array1::from(d).to_pyarray(py),
+            u.to_pyarray(py),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
 }
 
 #[pyfunction]
@@ -340,6 +393,7 @@ fn svd<'py>(
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lu, m)?)?;
+    m.add_function(wrap_pyfunction!(ldu, m)?)?;
     m.add_function(wrap_pyfunction!(cholesky, m)?)?;
     m.add_function(wrap_pyfunction!(qr, m)?)?;
     m.add_function(wrap_pyfunction!(eigh, m)?)?;
