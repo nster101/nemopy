@@ -81,10 +81,10 @@ from nemopy import ColVec, Mat, mat, _c
 def test_colvec_scalar_stats():
     u = _c[1, 2, 3, 4]
     data = np.array([1.0, 2.0, 3.0, 4.0])
-    assert isinstance(u.mean(), float) and u.mean() == data.mean()
-    assert isinstance(u.std(), float) and u.std() == data.std()
-    assert isinstance(u.var(), float) and u.var() == data.var()
-    assert isinstance(u.sum(), float) and u.sum() == data.sum()
+    assert type(u.mean()) is float and u.mean() == data.mean()
+    assert type(u.std()) is float and u.std() == data.std()
+    assert type(u.var()) is float and u.var() == data.var()
+    assert type(u.sum()) is float and u.sum() == data.sum()
 
 
 def test_colvec_norm():
@@ -125,7 +125,7 @@ def test_mat_mean_colwise_and_rowwise(backend):
 
 
 def test_mat_mean_invalid_axis():
-    with pytest.raises(ValueError, match="axis"):
+    with pytest.raises(ValueError, match="axis must be"):
         mat([1, 2], [3, 4]).mean(axis=2)
 
 
