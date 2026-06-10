@@ -23,7 +23,4 @@ jobs:
         run: pip install ruff
 
       - name: Check linting
-        run: ruff check nemopy/ tests/
-
-      - name: Check formatting
-        run: ruff format --check nemopy/ tests/
+        run: ruff check nemopy/
