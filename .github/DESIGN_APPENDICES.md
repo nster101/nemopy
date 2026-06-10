@@ -1109,13 +1109,22 @@ two tiers:
 1. **Fast path (required):** a Rust kernel in `_rust_core`. Every roadmap
    feature below is only considered useful at real-world scale with its
    Rust implementation — this is a hard requirement, not an optimization.
-2. **Fallback path (required):** a pure-Python/NumPy implementation with
-   identical semantics. `nemopy` must remain pip-installable with `numpy`
-   as the only hard dependency. The extension accelerates; it never gates
-   functionality.
+2. **Fallback path (scoped):** a pure-Python/NumPy implementation with
+   identical semantics is required only where nemopy replaces or wraps
+   functionality NumPy already provides (decompositions, statistics,
+   elimination-style array transforms, random variates, batch
+   broadcasting). `nemopy` must remain pip-installable with `numpy` as
+   the only hard dependency, and that NumPy-replacement surface must keep
+   working without the extension. Extended functionality that does not
+   exist in NumPy (LP/IP solvers, network algorithms, Markov/queueing
+   simulation engines, decision methods, the lazy optimizer) is
+   Rust-primary: it may require `_rust_core` and must raise a clear
+   error directing the user to build the extension when it is absent.
 
-Both paths are exercised by the same test suite. A feature is not complete
-until results agree across paths within documented tolerances.
+Where both paths exist, both are exercised by the same test suite and a
+feature is not complete until results agree across paths within
+documented tolerances. Rust-primary features are complete when the Rust
+path passes the suite.
 
 ### 20.2 Rust core layout
 
