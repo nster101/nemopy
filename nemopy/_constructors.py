@@ -478,7 +478,7 @@ def as_col(x):
                 return ColVec(x.to_numpy().astype(float).reshape(-1, 1))
             except (TypeError, ValueError) as exc:
                 raise TypeError(
-                    f"as_col() could not convert polars Series to float."
+                    "as_col() could not convert polars Series to float."
                 ) from exc
     except ImportError:
         pass
