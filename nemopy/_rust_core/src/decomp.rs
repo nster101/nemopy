@@ -391,6 +391,88 @@ fn svd<'py>(
     ))
 }
 
+
+/// Principal eigenpair of a positive matrix by power iteration with L1
+/// normalization (issue #87: AHP priority extraction; shared kernel).
+#[pyfunction]
+fn power_iteration<'py>(
+    py: Python<'py>,
+    a: PyReadonlyArray2<'py, f64>,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<(f64, Bound<'py, PyArray1<f64>>)> {
+    let a = a.as_array();
+    let result = py.allow_threads(|| {
+        let n = a.nrows();
+        let mut x = vec![1.0 / n as f64; n];
+        for _ in 0..max_iter {
+            let mut y = vec![0.0; n];
+            for i in 0..n {
+                for j in 0..n {
+                    y[i] += a[(i, j)] * x[j];
+                }
+            }
+            let s: f64 = y.iter().sum();
+            for v in y.iter_mut() {
+                *v /= s;
+            }
+            let diff: f64 = x
+                .iter()
+                .zip(y.iter())
+                .map(|(p, q)| (p - q).abs())
+                .sum();
+            x = y;
+            if diff < tol {
+                let mut lambda = 0.0;
+                for i in 0..n {
+                    for j in 0..n {
+                        lambda += a[(i, j)] * x[j];
+                    }
+                }
+                return Ok((lambda, x));
+            }
+        }
+        Err("power iteration did not converge".to_string())
+    });
+    match result {
+        Ok((lambda, x)) => Ok((lambda, Array1::from(x).to_pyarray(py))),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Limit supermatrix lim W^k by repeated squaring with convergence
+/// detection (issue #87 ANP).
+#[pyfunction]
+fn limit_supermatrix<'py>(
+    py: Python<'py>,
+    w: PyReadonlyArray2<'py, f64>,
+    tol: f64,
+    max_iter: usize,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let w = w.as_array();
+    let result = py.allow_threads(|| {
+        let mut cur = w.to_owned();
+        for _ in 0..max_iter {
+            let next = crate::markov::matmul(&cur, &cur);
+            let diff = next
+                .iter()
+                .zip(cur.iter())
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f64, f64::max);
+            cur = next;
+            if diff < tol {
+                return Ok(cur);
+            }
+        }
+        Err("limit supermatrix did not converge; the supermatrix may be \
+             cyclic"
+            .to_string())
+    });
+    result
+        .map(|x| x.to_pyarray(py))
+        .map_err(PyValueError::new_err)
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lu, m)?)?;
     m.add_function(wrap_pyfunction!(ldu, m)?)?;
@@ -398,5 +480,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(qr, m)?)?;
     m.add_function(wrap_pyfunction!(eigh, m)?)?;
     m.add_function(wrap_pyfunction!(svd, m)?)?;
+    m.add_function(wrap_pyfunction!(power_iteration, m)?)?;
+    m.add_function(wrap_pyfunction!(limit_supermatrix, m)?)?;
     Ok(())
 }

@@ -15,6 +15,12 @@ import numpy.ma as ma            # noqa: F401
 from nemopy._core import ColVec, Mat, ShapeError, ConventionWarning  # noqa: F401
 from nemopy._constructors import _c, _m, mat, eye, as_col, as_mat  # noqa: F401
 from nemopy._markov import markov, ctmc  # noqa: F401
+from nemopy._ahp import (  # noqa: F401
+    ahp_matrix,
+    ahp_synthesize,
+    ahp_aggregate,
+    anp_supermatrix,
+)
 from nemopy import _operators  # noqa: F401
 from nemopy import _stats  # noqa: F401
 from nemopy import _decompositions  # noqa: F401
@@ -29,6 +35,10 @@ __all__ = [
     "as_mat",
     "markov",
     "ctmc",
+    "ahp_matrix",
+    "ahp_synthesize",
+    "ahp_aggregate",
+    "anp_supermatrix",
     "ColVec",
     "Mat",
     "ShapeError",

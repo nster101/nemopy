@@ -288,7 +288,7 @@ fn markov_period(p: PyReadonlyArray2<'_, f64>, tol: f64) -> PyResult<usize> {
     Ok(g.unsigned_abs() as usize)
 }
 
-fn matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
+pub(crate) fn matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let n = a.nrows();
     let mut out = Array2::<f64>::zeros((n, n));
     for i in 0..n {
