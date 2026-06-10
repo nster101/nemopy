@@ -995,3 +995,20 @@ def _load_rust_core():
 
 
 _RUST = _load_rust_core()
+
+
+def _require_rust(feature):
+    """Return the ``_rust_core`` module or raise for Rust-primary features.
+
+    Per §20.1 (as amended), functionality that does not exist in NumPy is
+    Rust-primary and has no pure-Python fallback.
+    """
+    if _RUST is None:
+        raise RuntimeError(
+            f"{feature} requires the nemopy._rust_core extension, which is "
+            f"not built. Build it with: cargo build --release "
+            f"--manifest-path nemopy/_rust_core/Cargo.toml && cp "
+            f"nemopy/_rust_core/target/release/lib_rust_core.so "
+            f"nemopy/_rust_core.so"
+        )
+    return _RUST

@@ -8,6 +8,7 @@ use pyo3::prelude::*;
 
 mod decomp;
 mod linalg;
+mod markov;
 mod ops;
 mod stats;
 
@@ -23,5 +24,6 @@ fn _rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     stats::register(m)?;
     decomp::register(m)?;
     linalg::register(m)?;
+    markov::register(m)?;
     Ok(())
 }

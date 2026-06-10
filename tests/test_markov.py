@@ -55,8 +55,9 @@ documented behaviour of the issue #86 API surface.
 
 ## Test: test_simulate
 - Goal: simulate() returns a (n_steps+1, n_paths) Mat of valid state
-        indices starting at `start`, deterministic for a fixed seed.
-- Source: issue #86 simulation table.
+        indices starting at `start`, deterministic for a fixed seed
+        (Rust-primary engine; skipped when the extension is absent).
+- Source: issue #86 simulation table; amended §20.1.
 - Expected: shape/start/state-range hold; same seed reproduces.
 
 ## Test: test_hitting_time
@@ -83,12 +84,19 @@ documented behaviour of the issue #86 API surface.
 - Source: issue #86 design principles.
 - Expected: ValueError from steady_state on a non-stochastic Mat.
 
-## Test: test_simulate_backend_parity_distribution
-- Goal: the Rust and NumPy simulate paths sample the same distribution
-        (documented-tolerance agreement per §20.1; RNG streams differ).
-- Source: §20.1 path-agreement contract; issue #86 Rust notes.
-- Expected: empirical state frequencies of both paths match the steady
-            state within Monte Carlo tolerance.
+## Test: test_simulate_distribution
+- Goal: the simulation engine samples the chain's true distribution:
+        long-run state frequencies match the stationary distribution.
+- Source: issue #86 Rust notes (alias-method sampling correctness).
+- Expected: empirical frequency of state 1 within Monte Carlo tolerance
+            of pi[1].
+
+## Test: test_engines_require_extension
+- Goal: Rust-primary engines raise a clear build-pointer error when the
+        extension is absent instead of silently degrading (no Python
+        port exists for non-NumPy functionality).
+- Source: amended §20.1 (owner directive).
+- Expected: RuntimeError mentioning _rust_core from each engine method.
 """
 
 import numpy as np
@@ -96,6 +104,10 @@ import pytest
 
 from nemopy import ColVec, Mat, ShapeError, markov, ctmc, mat
 from nemopy import _core
+
+requires_rust = pytest.mark.skipif(
+    _core._RUST is None, reason="_rust_core extension not built"
+)
 
 
 def _np(x):
@@ -177,6 +189,7 @@ def test_absorbing_analysis():
     np.testing.assert_allclose(t.to_flat(), [2.0, 2.0], atol=1e-12)
 
 
+@requires_rust
 def test_communicate_and_irreducible():
     # state 2 absorbing; {0,1} communicate
     P = markov(mat(
@@ -191,6 +204,7 @@ def test_communicate_and_irreducible():
     assert cycle.is_irreducible()
 
 
+@requires_rust
 def test_period_and_ergodic():
     cycle = markov(mat([0.0, 1.0], [1.0, 0.0]))
     assert cycle.period() == 2
@@ -200,7 +214,8 @@ def test_period_and_ergodic():
     assert lazy.is_ergodic()
 
 
-def test_simulate(backend):
+@requires_rust
+def test_simulate():
     P = _two_state()
     walk = P.simulate(start=0, n_steps=50, n_paths=8, seed=123)
     assert isinstance(walk, Mat)
@@ -212,7 +227,8 @@ def test_simulate(backend):
     np.testing.assert_array_equal(w, _np(again))
 
 
-def test_hitting_time(backend):
+@requires_rust
+def test_hitting_time():
     P = markov(mat([0.0, 0.0], [1.0, 1.0]))  # rows: [0,1],[0,1]
     t = P.hitting_time(start=0, target=1, n_sims=200, seed=7)
     assert t == 1.0
@@ -224,7 +240,8 @@ def test_embedded_dtmc():
     np.testing.assert_allclose(_np(J), [[0.0, 1.0], [1.0, 0.0]])
 
 
-def test_transient_probs(backend):
+@requires_rust
+def test_transient_probs():
     Q = ctmc(mat([-1.0, 2.0], [1.0, -2.0]))
     t = 0.7
     P_t = Q.transient_probs(t)
@@ -242,22 +259,23 @@ def test_validation_gating():
         A.steady_state()
 
 
-def test_simulate_backend_parity_distribution():
-    if _core._RUST is None:
-        pytest.skip("_rust_core extension not built")
+@requires_rust
+def test_simulate_distribution():
     P = _two_state()
     pi = P.steady_state().to_flat()
+    walk = _np(P.simulate(start=0, n_steps=4000, n_paths=4, seed=11))
+    assert abs((walk == 1.0).mean() - pi[1]) < 0.03
 
-    rust_walk = _np(P.simulate(start=0, n_steps=4000, n_paths=4, seed=11))
-    rust_freq = (rust_walk == 1.0).mean()
 
-    saved = _core._RUST
-    try:
-        _core._RUST = None
-        py_walk = _np(P.simulate(start=0, n_steps=4000, n_paths=4, seed=11))
-    finally:
-        _core._RUST = saved
-    py_freq = (py_walk == 1.0).mean()
-
-    assert abs(rust_freq - pi[1]) < 0.03
-    assert abs(py_freq - pi[1]) < 0.03
+def test_engines_require_extension(monkeypatch):
+    monkeypatch.setattr(_core, "_RUST", None)
+    P = _two_state()
+    Q = ctmc(mat([-1.0, 2.0], [1.0, -2.0]))
+    with pytest.raises(RuntimeError, match="_rust_core"):
+        P.simulate(start=0, n_steps=1, seed=0)
+    with pytest.raises(RuntimeError, match="_rust_core"):
+        P.hitting_time(start=0, target=1, n_sims=1, seed=0)
+    with pytest.raises(RuntimeError, match="_rust_core"):
+        P.communicate()
+    with pytest.raises(RuntimeError, match="_rust_core"):
+        Q.transient_probs(0.5)

@@ -14,6 +14,7 @@ import numpy.ma as ma            # noqa: F401
 # Layer 2: Override with nemopy's own types and constructors
 from nemopy._core import ColVec, Mat, ShapeError, ConventionWarning  # noqa: F401
 from nemopy._constructors import _c, _m, mat, eye, as_col, as_mat  # noqa: F401
+from nemopy._markov import markov, ctmc  # noqa: F401
 from nemopy import _operators  # noqa: F401
 from nemopy import _stats  # noqa: F401
 from nemopy import _decompositions  # noqa: F401
@@ -26,6 +27,8 @@ __all__ = [
     "eye",
     "as_col",
     "as_mat",
+    "markov",
+    "ctmc",
     "ColVec",
     "Mat",
     "ShapeError",
