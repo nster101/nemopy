@@ -10,6 +10,7 @@ mod decomp;
 mod linalg;
 mod markov;
 mod ops;
+mod optim;
 mod stats;
 
 #[pyfunction]
@@ -25,5 +26,6 @@ fn _rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     decomp::register(m)?;
     linalg::register(m)?;
     markov::register(m)?;
+    optim::register(m)?;
     Ok(())
 }

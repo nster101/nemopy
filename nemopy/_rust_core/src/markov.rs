@@ -304,7 +304,7 @@ pub(crate) fn matmul(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     out
 }
 
-fn solve_matrix(a: &Array2<f64>, b: &Array2<f64>) -> Result<Array2<f64>, String> {
+pub(crate) fn solve_matrix(a: &Array2<f64>, b: &Array2<f64>) -> Result<Array2<f64>, String> {
     let n = a.nrows();
     let m = b.ncols();
     let mut w = Array2::<f64>::zeros((n, n + m));
