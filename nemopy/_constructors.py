@@ -340,22 +340,27 @@ def mat(*args):
     return Mat(stacked)
 
 
-def eye(n):
-    """Construct the n × n identity matrix.
+def eye(n, *args, **kwargs):
+    """Construct an identity matrix.
 
-    Wraps ``numpy.eye(n)`` as a ``Mat``, ensuring the identity enters nemopy
-    expressions with the correct type label. More concise than
-    ``Mat(np.eye(n))`` and avoids importing NumPy at call sites.
+    Wraps ``numpy.eye`` as a ``Mat``, accepting all of NumPy's ``eye()``
+    parameters for compatibility. The output is always ``float64`` because
+    ``Mat`` promotes all dtypes to ``float64``.
 
     Parameters
     ----------
     n : int
-        Dimension of the identity matrix. Must be a positive integer.
+        Number of rows.
+    *args, **kwargs
+        Additional arguments forwarded to ``numpy.eye`` (e.g. ``M``,
+        ``k``, ``dtype``). The ``dtype`` argument is accepted for
+        compatibility but the output is always promoted to ``float64``
+        by ``Mat``.
 
     Returns
     -------
     Mat
-        Shape ``(n, n)`` identity matrix with dtype ``float64``.
+        Identity matrix with dtype ``float64``.
 
     Examples
     --------
@@ -381,7 +386,7 @@ def eye(n):
     mat : Column-first matrix constructor.
     Mat : Direct constructor for 2D arrays.
     """
-    return Mat(np.eye(int(n)))
+    return Mat(np.eye(int(n), *args, **kwargs))
 
 
 def as_col(x):

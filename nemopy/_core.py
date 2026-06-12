@@ -687,6 +687,8 @@ class Mat(_VecBase):
             return float(result)
 
         if result.ndim == 1:
+            if isinstance(key, np.ndarray) and key.dtype == bool:
+                return np.asarray(result)
             if isinstance(key, tuple) and len(key) == 2:
                 row_key, col_key = key
                 if isinstance(col_key, (int, np.integer)):
