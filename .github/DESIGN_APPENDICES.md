@@ -1109,22 +1109,36 @@ two tiers:
 1. **Fast path (required):** a Rust kernel in `_rust_core`. Every roadmap
    feature below is only considered useful at real-world scale with its
    Rust implementation — this is a hard requirement, not an optimization.
-2. **Fallback path (scoped):** a pure-Python/NumPy implementation with
-   identical semantics is required only where nemopy replaces or wraps
-   functionality NumPy already provides (decompositions, statistics,
-   elimination-style array transforms, random variates, batch
-   broadcasting). `nemopy` must remain pip-installable with `numpy` as
-   the only hard dependency, and that NumPy-replacement surface must keep
-   working without the extension. Extended functionality that does not
-   exist in NumPy (LP/IP solvers, network algorithms, Markov/queueing
-   simulation engines, decision methods, the lazy optimizer) is
-   Rust-primary: it may require `_rust_core` and must raise a clear
-   error directing the user to build the extension when it is absent.
+2. **Fallback path (scoped — NumPy-wrapping features only):** a
+   pure-Python/NumPy implementation is required **only** for features
+   that wrap functionality NumPy already provides natively. This means:
+   - Core decompositions that NumPy/LAPACK exposes (#76: SVD, QR, LU,
+     Cholesky, eig, eigh)
+   - Basic statistics that NumPy provides (mean, std, var, norm — #77)
+   - Batch broadcasting patterns built on NumPy primitives (#80)
+   
+   `nemopy` must remain pip-installable with `numpy` as the only hard
+   dependency, and that NumPy-wrapping surface must keep working without
+   the extension.
+3. **Rust-primary (no Python fallback required):** features that do not
+   exist in NumPy require `_rust_core` and raise a clear
+   `ImportError` directing the user to build the extension when it is
+   absent. **No Python fallback is required.** This includes:
+   - Advanced decompositions not in NumPy (#84: LDU, QDR, Schur,
+     Jordan, Polar, similarity decomposition)
+   - Gaussian elimination / REF / RREF (#85)
+   - LP/IP/MILP solvers (#91)
+   - Network optimization algorithms (#92)
+   - Markov chain analysis and simulation (#86)
+   - AHP/ANP decision methods (#87)
+   - Stochastic OR / Monte Carlo / queueing (#93)
+   - Lazy evaluation and expression optimization (#81)
+   - Financial/risk primitives beyond basic statistics (#79)
 
-Where both paths exist, both are exercised by the same test suite and a
-feature is not complete until results agree across paths within
-documented tolerances. Rust-primary features are complete when the Rust
-path passes the suite.
+Where both paths exist (tier 2), both are exercised by the same test
+suite and a feature is not complete until results agree across paths
+within documented tolerances. Rust-primary features (tier 3) are
+complete when the Rust path passes the suite.
 
 ### 20.2 Rust core layout
 
@@ -1166,21 +1180,21 @@ buffer interop).
 
 ### 20.4 Feature domains
 
-| Domain | Issues | Rust modules |
-|---|---|---|
-| Core decompositions (SVD, QR, LU, Cholesky, eig, eigh) | #76 | `decomp.rs` |
-| Advanced decompositions (LDU, QDR, Schur, Jordan, Polar, diagonalize) | #84 | `decomp.rs` |
-| Gaussian elimination, Gauss-Jordan, REF/RREF, rank, nullspace | #85 | `linalg.rs` |
-| Statistical methods (mean/std/var/norm/cov/corr, column-first) | #77 | `stats.rs` |
-| DataFrame-as-matrix bridge (`NamedMat`) | #78 | `ops.rs` |
-| Financial/risk primitives (portfolio, EWMA/rolling cov, factor models) | #79 | `stats.rs`, `sim.rs` |
-| Batch operations (`BatchMat`, `BatchColVec`) | #80 | `ops.rs` |
-| Lazy evaluation and expression optimization | #81 | `lazy.rs` |
-| Markov chains, DTMC/CTMC, simulation | #86 | `markov.rs` |
-| AHP/ANP multi-criteria decision methods | #87 | `decomp.rs` |
-| Linear programming (Simplex, dual simplex, LP/IP/MILP) | #91 | `optim.rs` |
-| Network optimization (shortest path, max flow, assignment) | #92 | `network.rs` |
-| Stochastic OR (Monte Carlo, queueing, discrete-event simulation) | #93 | `sim.rs` |
+| Domain | Issues | Rust modules | Tier |
+|---|---|---|---|
+| Core decompositions (SVD, QR, LU, Cholesky, eig, eigh) | #76 | `decomp.rs` | 2 — fallback |
+| Advanced decompositions (LDU, QDR, Schur, Jordan, Polar, diagonalize) | #84 | `decomp.rs` | 3 — Rust-primary |
+| Gaussian elimination, Gauss-Jordan, REF/RREF, rank, nullspace | #85 | `linalg.rs` | 3 — Rust-primary |
+| Statistical methods (mean/std/var/norm/cov/corr, column-first) | #77 | `stats.rs` | 2 — fallback |
+| DataFrame-as-matrix bridge (`NamedMat`) | #78 | `ops.rs` | 2 — fallback |
+| Financial/risk primitives (portfolio, EWMA/rolling cov, factor models) | #79 | `stats.rs`, `sim.rs` | 3 — Rust-primary |
+| Batch operations (`BatchMat`, `BatchColVec`) | #80 | `ops.rs` | 2 — fallback |
+| Lazy evaluation and expression optimization | #81 | `lazy.rs` | 3 — Rust-primary |
+| Markov chains, DTMC/CTMC, simulation | #86 | `markov.rs` | 3 — Rust-primary |
+| AHP/ANP multi-criteria decision methods | #87 | `decomp.rs` | 3 — Rust-primary |
+| Linear programming (Simplex, dual simplex, LP/IP/MILP) | #91 | `optim.rs` | 3 — Rust-primary |
+| Network optimization (shortest path, max flow, assignment) | #92 | `network.rs` | 3 — Rust-primary |
+| Stochastic OR (Monte Carlo, queueing, discrete-event simulation) | #93 | `sim.rs` | 3 — Rust-primary |
 
 ### 20.5 Phases
 
