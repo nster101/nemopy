@@ -1,0 +1,14 @@
+{
+  "name": "nemo-agents",
+  "owner": { "name": "nster101" },
+  "metadata": {
+    "description": "Marketplace hosting the-girls — the reusable 5-agent crew harness."
+  },
+  "plugins": [
+    {
+      "name": "the-girls",
+      "source": "./",
+      "description": "5-agent crew: Einstein (conductor), Archimedes/Euclid/Gauss (builders), Newton (skeptic reviewer/gate)."
+    }
+  ]
+}
