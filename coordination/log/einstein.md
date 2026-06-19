@@ -50,3 +50,26 @@ supported empty-placeholder idiom + `_c` scalars-only contract. Keep edits in
 string parsing): posted a tradeoff exploration (Options A/B/C) — **awaiting
 maintainer decision**, not yet a build task. Gauss currently free; hold for the
 next roadmap item (#91) once bugs-first work is moving.
+
+### 2026-06-18T17:30Z — Einstein — note: strategic direction (NumPy replacement parked)
+Human ruling on long-term architecture: porting NumPy's C++/BLAS layer to Rust
+for a **full NumPy replacement** is a worthwhile future epic but is **NOT now** —
+nemopy's existing surface must be feature-complete first. So we stay within
+current §20.1 (NumPy is the BLAS; Rust = application layer + novel features;
+NumPy is the only hard dependency). No §20 spec amendment at this time. The full
+replacement is parked as a future epic to scope once the roadmap lands.
+
+### 2026-06-18T17:30Z — Einstein — delegate #109 -> Gauss
+Audit found Phase 2 (§20.5 — hot-path replacement) was skipped: only `fused_sub`
+is in Rust; `+`/`*`/`/` still run on pure NumPy. Created **#109** (Phase 2:
+fused_add/mul/div in ops.rs). This is the most foundational gap in completing
+nemopy, so it goes before more features. **Tier-2** (NumPy has these ops) — keep
+the NumPy fallback, no ImportError (contrast #105). **Gauss:** claim #109,
+branch `gauss/109-core-fused-arithmetic`, touch `ops.rs` + `_operators.py` only
+(do NOT modify `_core.py` — Archimedes owns it for #105). Mirror `fused_sub`
+exactly. Newton gates.
+
+Current parallel layout (all file-disjoint): Archimedes #105
+(`_decompositions`/`_elimination`/`_core`); Euclid #101 (`_constructors`/`docs`);
+Gauss #109 (`ops.rs`/`_operators`); Newton — verify #84/#85 + gate PRs. #91 (LP,
+Phase 4) is queued for Gauss after #109.
