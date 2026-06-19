@@ -1,11 +1,13 @@
 """Gaussian elimination and row echelon forms as Mat methods (issue #85).
 
-The production path runs in ``_rust_core.linalg`` (REF/RREF, fused
-Gaussian solve); the NumPy fallback mirrors its semantics per §20.1. The
-step-by-step ``ref_steps()`` pedagogy mode stays in Python by design.
-RREF is primarily valuable for exact/small systems and teaching; for
-large systems prefer the LU-backed solvers (numerical-stability note in
-issue #85).
+These are Tier-3, Rust-primary features (DESIGN_APPENDICES.md
+§20.1/§20.4): they have no NumPy equivalent, so the production path runs
+in ``_rust_core.linalg`` (REF/RREF, fused Gaussian solve) and a clear
+``ImportError`` is raised when the extension is absent — there is no
+NumPy fallback. The step-by-step ``ref_steps()`` pedagogy mode stays in
+Python by design. RREF is primarily valuable for exact/small systems and
+teaching; for large systems prefer the LU-backed solvers
+(numerical-stability note in issue #85).
 """
 
 import numpy as np
@@ -17,60 +19,6 @@ from nemopy._core import ColVec, Mat, ShapeError
 def _default_tol(a):
     scale = max(1.0, float(np.abs(a).max())) if a.size else 1.0
     return np.finfo(float).eps * max(a.shape) * scale
-
-
-def _ref_fallback(a, partial):
-    m, n = a.shape
-    r = a.copy()
-    tol = _default_tol(a)
-    row = 0
-    for col in range(n):
-        if row >= m:
-            break
-        if partial:
-            p = row + int(np.argmax(np.abs(r[row:, col])))
-        else:
-            p = row
-        if abs(r[p, col]) <= tol:
-            if not partial and np.any(np.abs(r[row + 1:, col]) > tol):
-                raise ValueError(
-                    f'zero pivot in column {col} requires a row exchange; '
-                    f'use pivot="partial"'
-                )
-            continue
-        if p != row:
-            r[[row, p], :] = r[[p, row], :]
-        f = r[row + 1:, col] / r[row, col]
-        r[row + 1:, col:] -= np.outer(f, r[row, col:])
-        r[row + 1:, col] = 0.0
-        row += 1
-    return r
-
-
-def _rref_fallback(a):
-    m, n = a.shape
-    r = a.copy()
-    tol = _default_tol(a)
-    pivots = []
-    row = 0
-    for col in range(n):
-        if row >= m:
-            break
-        p = row + int(np.argmax(np.abs(r[row:, col])))
-        if abs(r[p, col]) <= tol:
-            continue
-        if p != row:
-            r[[row, p], :] = r[[p, row], :]
-        r[row, :] /= r[row, col]
-        r[row, col] = 1.0
-        others = [i for i in range(m) if i != row]
-        f = r[others, col]
-        r[others, :] -= np.outer(f, r[row, :])
-        r[others, col] = 0.0
-        pivots.append(col)
-        row += 1
-    r[r == 0.0] = 0.0
-    return r, pivots
 
 
 def _mat_ref(self, pivot="partial"):
@@ -93,10 +41,8 @@ def _mat_ref(self, pivot="partial"):
             f'pivot must be "partial" or "none", got {pivot!r}'
         )
     a = np.asarray(self)
-    rust = _core._RUST
-    if rust is not None:
-        return Mat(rust.ref_(a, pivot == "partial"))
-    return Mat(_ref_fallback(a, pivot == "partial"))
+    rust = _core._require_rust("ref")
+    return Mat(rust.ref_(a, pivot == "partial"))
 
 
 def _mat_rref(self):
@@ -108,16 +54,21 @@ def _mat_rref(self):
         The canonical RREF and the pivot column indices.
     """
     a = np.asarray(self)
-    rust = _core._RUST
-    if rust is not None:
-        r, pivots = rust.rref(a)
-    else:
-        r, pivots = _rref_fallback(a)
+    rust = _core._require_rust("rref")
+    r, pivots = rust.rref(a)
     return Mat(np.asarray(r)), tuple(int(p) for p in pivots)
 
 
 def _mat_rank(self):
-    """Rank as the number of RREF pivot columns (tolerance-aware)."""
+    """Rank as the number of RREF pivot columns (tolerance-aware).
+
+    Raises
+    ------
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
+    """
+    _core._require_rust("rank")
     return len(_mat_rref(self)[1])
 
 
@@ -125,7 +76,14 @@ def _mat_nullspace(self):
     """Null space basis vectors as Mat columns (from the RREF).
 
     A full-rank matrix returns an empty ``(k, 0)`` Mat.
+
+    Raises
+    ------
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
+    _core._require_rust("nullspace")
     k = self.shape[1]
     r, pivots = _mat_rref(self)
     r = np.asarray(r)
@@ -159,6 +117,9 @@ def _mat_gaussian_eliminate(self, b):
         If A is not square or b has the wrong shape.
     ValueError
         If A is singular to working precision.
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
     if self.shape[0] != self.shape[1]:
         raise ShapeError(
@@ -167,25 +128,9 @@ def _mat_gaussian_eliminate(self, b):
         )
     a = np.asarray(self)
     b = _check_rhs(self, b, "gaussian_eliminate")
-    rust = _core._RUST
-    if rust is not None:
-        x = rust.gauss_solve(a, b)
-        return ColVec(np.asarray(x).reshape(-1, 1))
-    w = np.hstack([a, b]).astype(float)
-    n = a.shape[0]
-    tol = _default_tol(a)
-    for k in range(n):
-        p = k + int(np.argmax(np.abs(w[k:, k])))
-        if abs(w[p, k]) <= tol:
-            raise ValueError("matrix is singular to working precision")
-        if p != k:
-            w[[k, p], :] = w[[p, k], :]
-        f = w[k + 1:, k] / w[k, k]
-        w[k + 1:, k:] -= np.outer(f, w[k, k:])
-    x = np.zeros(n)
-    for i in range(n - 1, -1, -1):
-        x[i] = (w[i, n] - w[i, i + 1:n] @ x[i + 1:]) / w[i, i]
-    return ColVec(x.reshape(-1, 1))
+    rust = _core._require_rust("gaussian_eliminate")
+    x = rust.gauss_solve(a, b)
+    return ColVec(np.asarray(x).reshape(-1, 1))
 
 
 def _mat_gauss_jordan(self, b=None):
@@ -201,7 +146,11 @@ def _mat_gauss_jordan(self, b=None):
         With ``b``: if A is not square or b has the wrong shape.
     ValueError
         With ``b``: if A is singular to working precision.
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
+    _core._require_rust("gauss_jordan")
     if b is None:
         return _mat_rref(self)[0]
     if self.shape[0] != self.shape[1]:
@@ -225,6 +174,9 @@ def _mat_augment(self, b):
     ------
     ShapeError
         If b's row count differs from A's.
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
     b = np.asarray(b, dtype=float)
     if b.ndim == 1:
@@ -234,6 +186,7 @@ def _mat_augment(self, b):
             f"augment() requires equal row counts, got {self.shape} "
             f"and {b.shape}."
         )
+    _core._require_rust("augment")
     return Mat(np.hstack([np.asarray(self), b]))
 
 

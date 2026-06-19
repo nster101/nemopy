@@ -193,26 +193,6 @@ DiagonalizeResult = namedtuple("DiagonalizeResult", ["P", "D"])
 JordanResult = namedtuple("JordanResult", ["J", "P"])
 
 
-def _ldu_fallback(a):
-    n = a.shape[0]
-    scale = max(1.0, float(np.abs(a).max()))
-    u = a.copy()
-    low = np.eye(n)
-    for k in range(n):
-        piv = u[k, k]
-        if abs(piv) < 1e-12 * scale:
-            raise ValueError(
-                f"LDU requires nonzero pivots without row exchanges; zero "
-                f"pivot at position {k}. Use lu() for a pivoted factorization."
-            )
-        f = u[k + 1:, k] / piv
-        low[k + 1:, k] = f
-        u[k + 1:, k:] -= np.outer(f, u[k, k:])
-    d = np.diag(u).copy()
-    u = u / d[:, None]
-    return low, d, u
-
-
 def _mat_ldu(self):
     """LDU factorization ``A = L @ D @ U`` without row exchanges.
 
@@ -225,13 +205,13 @@ def _mat_ldu(self):
     ValueError
         If elimination hits a zero pivot (pivoting would be required);
         use :meth:`lu` instead.
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
     a = _require_square(self, "ldu")
-    rust = _core._RUST
-    if rust is not None:
-        low, d, u = rust.ldu(a)
-    else:
-        low, d, u = _ldu_fallback(a)
+    rust = _core._require_rust("ldu")
+    low, d, u = rust.ldu(a)
     return LDUResult(Mat(np.asarray(low)), Mat(np.diag(np.asarray(d))),
                      Mat(np.asarray(u)))
 
@@ -248,7 +228,11 @@ def _mat_qdr(self):
     ValueError
         If the QR ``R`` factor has a zero diagonal entry (rank
         deficiency), so the unit-diagonal rescaling does not exist.
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
+    _core._require_rust("qdr")
     q, r = _mat_qr(self)
     r = np.asarray(r)
     d = np.diag(r).copy()
@@ -262,17 +246,21 @@ def _mat_qdr(self):
 def _mat_schur(self):
     """Real Schur decomposition ``A = Z @ T @ Z.T``.
 
-    LAPACK-delegated via SciPy on both paths pending a ``_rust_core``
-    Schur kernel (issue #84 interim).
+    A Tier-3 feature (§20.1/§20.4) that requires the ``_rust_core``
+    extension; the computation is LAPACK-delegated via SciPy pending a
+    ``_rust_core`` Schur kernel (issue #84 interim).
 
     Raises
     ------
     ShapeError
         If the matrix is not square.
     ImportError
-        If SciPy is not installed.
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback), or if SciPy is not installed on the
+        interim delegated path.
     """
     a = _require_square(self, "schur")
+    _core._require_rust("schur")
     try:
         from scipy.linalg import schur as _scipy_schur
     except ImportError as exc:
@@ -288,9 +276,15 @@ def _mat_polar(self):
     """Left polar decomposition ``A = U @ P``.
 
     ``U`` has orthonormal columns and ``P`` is symmetric positive
-    semidefinite. Derived from the thin SVD, so it uses the Rust SVD
-    kernel when available.
+    semidefinite. Derived from the thin SVD via the Rust kernel.
+
+    Raises
+    ------
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
+    _core._require_rust("polar")
     u, s, vt = _mat_svd(self)
     u, s, vt = np.asarray(u), np.asarray(s).ravel(), np.asarray(vt)
     return PolarResult(Mat(u @ vt), Mat(vt.T @ np.diag(s) @ vt))
@@ -311,8 +305,12 @@ def _mat_diagonalize(self):
         If the matrix is not square.
     ValueError
         If the matrix is not diagonalizable (defective eigenbasis).
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
     a = _require_square(self, "diagonalize")
+    _core._require_rust("diagonalize")
     n = a.shape[0]
     result = _mat_eig(self)
     vecs = np.asarray(result.vectors)
@@ -350,8 +348,12 @@ def _mat_jordan(self):
         If the matrix is not square.
     ValueError
         If a complete generalized eigenbasis cannot be assembled.
+    ImportError
+        If the ``_rust_core`` extension is not available (Tier-3 feature
+        with no NumPy fallback; §20.1/§20.4).
     """
     a = _require_square(self, "jordan")
+    _core._require_rust("jordan")
     n = a.shape[0]
     scale = max(1.0, float(np.abs(a).max()))
     tol = 1e-8 * scale
