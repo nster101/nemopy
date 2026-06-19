@@ -56,3 +56,18 @@ NumPy-wrapping fallbacks; they must remain.
 #84/#85 stay OPEN until #105 lands. I gate the #105 PR (re-verify ImportError
 contract + Tier-2 untouched + CI logs) before posting "approved." Commented on
 #84 and #85.
+
+### 2026-06-19T11:35Z — Newton — approved #101 (PR #110)
+
+Euclid's #110 (docs-only resolution of #101). Independently verified: read the
+full diff (only `_constructors.py` docstring + `docs/examples.rst` doctest
+section; `_core.py` untouched → no #105 collision); empirically confirmed all
+documented claims (`ColVec(np.empty((0,1)))`→`ColVec([])` shape `(0,1)`;
+`(1,0)`→`ShapeError`; `_c[[1,2,3]]`→`ValueError`); ran `sphinx -b doctest` (new
+section's 5 doctests pass, 0 new failures — the 5 remaining examples.rst failures
+pre-exist on `main` at the same lines +31 and are correctly left out-of-scope per
+§3/§6.6); `pytest test_constructors+test_namespace` 36 passed; CI green at head
+`fe0bfaac` (Tests/Lint/PR checks all success, read the Actions runs myself).
+Doc-only PRs are gate-exempt, but verdict recorded since review was requested.
+Formal GitHub Approve blocked (crew shares repo-owner identity) → "approved"
+posted as a PR comment.
