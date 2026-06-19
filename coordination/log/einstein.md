@@ -50,3 +50,49 @@ supported empty-placeholder idiom + `_c` scalars-only contract. Keep edits in
 string parsing): posted a tradeoff exploration (Options A/B/C) — **awaiting
 maintainer decision**, not yet a build task. Gauss currently free; hold for the
 next roadmap item (#91) once bugs-first work is moving.
+
+### 2026-06-18T17:30Z — Einstein — note: strategic direction (NumPy replacement parked)
+Human ruling on long-term architecture: porting NumPy's C++/BLAS layer to Rust
+for a **full NumPy replacement** is a worthwhile future epic but is **NOT now** —
+nemopy's existing surface must be feature-complete first. So we stay within
+current §20.1 (NumPy is the BLAS; Rust = application layer + novel features;
+NumPy is the only hard dependency). No §20 spec amendment at this time. The full
+replacement is parked as a future epic to scope once the roadmap lands.
+
+### 2026-06-18T17:30Z — Einstein — delegate #109 -> Gauss
+Audit found Phase 2 (§20.5 — hot-path replacement) was skipped: only `fused_sub`
+is in Rust; `+`/`*`/`/` still run on pure NumPy. Created **#109** (Phase 2:
+fused_add/mul/div in ops.rs). This is the most foundational gap in completing
+nemopy, so it goes before more features. **Tier-2** (NumPy has these ops) — keep
+the NumPy fallback, no ImportError (contrast #105). **Gauss:** claim #109,
+branch `gauss/109-core-fused-arithmetic`, touch `ops.rs` + `_operators.py` only
+(do NOT modify `_core.py` — Archimedes owns it for #105). Mirror `fused_sub`
+exactly. Newton gates.
+
+Current parallel layout (all file-disjoint): Archimedes #105
+(`_decompositions`/`_elimination`/`_core`); Euclid #101 (`_constructors`/`docs`);
+Gauss #109 (`ops.rs`/`_operators`); Newton — verify #84/#85 + gate PRs. #91 (LP,
+Phase 4) is queued for Gauss after #109.
+
+### 2026-06-19T11:40Z — Einstein — note: Newton verdict on #84/#85 (PR #108) + jordan ruling
+Newton independently re-verified the Tier-3 audit (PR #108): VIOLATION CONFIRMED,
+membership matches mine (13 methods). Three refinements: (1) schur/jordan/
+diagonalize/augment (+ Tier-2 eig) have NO `_RUST` dispatch even when the
+extension is built — a Tier-1 fast-path gap beyond the fallback issue; (2) the
+merged tests assert the non-compliant fallback, so CI-green never proved
+compliance; (3) spec tension: #84's brief carves out a SciPy/SymPy fallback for
+`jordan` "until Rust stabilizes," conflicting with §20.1. Verified the #84 quote
+myself — #84 is internally self-contradictory.
+**Human ruling (2026-06-19): strict §20.1 — jordan raises ImportError**, carve-out
+overruled (§1/§11 spec precedence).
+
+### 2026-06-19T11:40Z — Einstein — note: #105 scope clarified, #111 filed
+Updated #105 (comment) for Archimedes: scope = add the ImportError gate to ALL 13
+Tier-3 methods + remove NumPy/SciPy fallbacks; jordan included (strict). Building
+the missing Rust kernels is OUT of #105 — split to new issue **#111** (Tier-1
+fast-path gap: schur/jordan/diagonalize kernels in decomp.rs; augment kernel TBD;
+depends on #105). Authorized Archimedes (§6.6 exception, on Newton's PR #108
+evidence) to update the existing fallback-asserting tests in
+`test_decompositions_advanced.py`/`test_elimination.py` to assert the ImportError
+contract. Newton gates the #105 PR. #84/#85 stay open until #105 lands; #111 is a
+follow-up after that.
