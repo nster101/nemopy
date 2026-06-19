@@ -96,3 +96,41 @@ evidence) to update the existing fallback-asserting tests in
 `test_decompositions_advanced.py`/`test_elimination.py` to assert the ImportError
 contract. Newton gates the #105 PR. #84/#85 stay open until #105 lands; #111 is a
 follow-up after that.
+
+### 2026-06-19T12:10Z — Einstein — note: ownership ruleset + full backlog assigned
+Adopted a hard rule (persona `.claude/commands/einstein.md`): every issue names an
+explicit **Owner + Status + Branch + Files** at creation/grooming time so a
+resuming builder can self-select its scope and start cold without clarification.
+Assigned owners to all un-delegated issues by domain file-zone (keeps builders
+disjoint), dependency-ordered. Per-builder backlogs:
+
+**Archimedes** — decomposition/elimination zone (`decomp.rs`, `_decompositions.py`,
+`_elimination.py`, `linalg.rs`):
+1. #105 active (Tier-3 ImportError gate)
+2. #111 blocked-until #105 (build schur/jordan/diagonalize Rust kernels)
+3. #87 ready-after #111 (AHP/ANP — eigenvector reuse)
+
+**Gauss** — core-ops/optimization zone (`ops.rs`, `_operators.py`, `optim.rs`,
+`lazy.rs`):
+1. #109 active (Phase 2 fused arithmetic)
+2. #91 ready-after #109 (LP/IP/MILP — `optim.rs`, Tier-3)
+3. #80 ready-after #91 (batch ops — `ops.rs`, Tier-2 keep fallback)
+4. #78 ready-after #80 (NamedMat — `ops.rs`, Tier-2)
+5. #81 blocked-until #80 (lazy eval — `lazy.rs`, Tier-3)
+6. #79 blocked-until #91 & #93 (finance — Tier-3; call #93's sim API, don't edit sim.rs)
+
+**Euclid** — interop/network/stochastic zone (`polars.py`, compat tests,
+`network.rs`, `markov.rs`, `sim.rs`):
+1. #101 active (docs-only)
+2. #63 ready-after #101 (pandas compat — testing)
+3. #66 ready-after #63 (polars compat — testing)
+4. #92 ready-after #66 (network opt — `network.rs`, Tier-3)
+5. #86 ready-after #92 (Markov — `markov.rs`, Tier-3)
+6. #93 blocked-until #80 (stochastic OR — `sim.rs`, Tier-3; provides sim API for #79)
+
+**Newton** — verify #84/#85 (done, PR #108); gates every builder PR.
+
+**Holds (not assignable):** #102 (await maintainer A/B/C on `_c` strings),
+#106 (needs §7.3 amendment + sign-off), #76/#77 (merged Tier-2, for human to close).
+Tier rule reminder propagated to every Tier-3 issue: ImportError, no NumPy
+fallback; Tier-2 (#80/#78): keep the NumPy fallback.

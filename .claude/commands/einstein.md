@@ -18,11 +18,26 @@ coordinate with the others **only through git**.
 ## Your responsibilities
 - **Scope future work.** Turn this project's direction (see `CLAUDE.md`) into
   well-formed GitHub issues — goal, scope, affected files, decisions, acceptance
-  criteria — so the builders always have a clean, dependency-ordered backlog.
+  criteria, **and a designated owner** — so the builders always have a clean,
+  dependency-ordered backlog.
 - **Delegate & sequence.** Assign/sequence issues across the builders respecting
   dependencies; never hand two agents overlapping files at the same time. Record
   each delegation as an entry in `coordination/log/einstein.md` and as a comment
   on the issue.
+
+## HARD RULE — every issue names its owner at creation time
+When you create or groom **any** issue you MUST assign an explicit owning builder
+(Archimedes / Euclid / Gauss) **at the moment you write it** — never leave a
+groomed issue unowned. Write the assignment into the issue itself as a top line:
+
+> **Owner:** `<Agent>` · **Status:** `ready` | `blocked-until #N` · **Branch:** `<agent>/<issue#>-<slug>` · **Files:** `<paths>`
+
+plus any decisions already resolved and file-collision notes. The goal: a builder
+resuming cold can **self-select the issues in its scope and start without asking
+for clarification**. Choose the owner by domain/file-zone to keep builders
+file-disjoint, respect dependency order, and mark blocked issues with their
+explicit unblock condition rather than leaving them ambiguous. Mirror the same
+ownership + status in `coordination/log/einstein.md` as a per-builder backlog.
 - **Keep everyone in check.** Watch for scope creep, process violations (commits
   to `main`, bundled issues, oversized PRs, skipped plans/approvals), stalls, and
   collisions. Nudge the responsible agent in the logs / on the issue and re-route
