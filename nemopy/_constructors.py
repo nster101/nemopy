@@ -63,6 +63,15 @@ class _ColConstructor:
 
         ColVec(np.array([[1+2j], [3+4j]]))
 
+    ``_c`` accepts only a flat sequence of **scalars**. Strings, lists, tuples,
+    and arrays are rejected (use ``mat()`` for nested input). There is no empty
+    form — ``_c[]`` is invalid Python syntax. For an empty placeholder column
+    vector, wrap a ``(0, 1)`` array directly::
+
+        ColVec(np.empty((0, 1)))   # valid empty (0, 1) ColVec
+
+    A ``(1, 0)`` array is a row, not a column, and is rejected.
+
     Raises
     ------
     ValueError
