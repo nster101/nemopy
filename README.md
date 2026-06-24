@@ -6,10 +6,55 @@ matrices are constructed column-by-column; arithmetic raises a clear
 
 ## Install
 
+nemopy is not on PyPI yet — install it from the git repository. It requires
+Python `>=3.10` (the repo pins 3.14 via `.python-version`) and is developed
+with [uv](https://docs.astral.sh/uv/). The only hard dependency is NumPy.
+
+There are two modes. **Mode A (pure-Python)** is the default and needs no
+toolchain beyond Python; **Mode B (Rust-enabled)** additionally compiles the
+optional `nemopy._rust_core` extension to unlock the Tier-3 surface.
+
+### Mode A — pure-Python
+
 ```bash
-pip install nemopy                  # core (numpy only)
-pip install "nemopy[pandas]"        # adds pandas Series / DataFrame interop
-pip install "nemopy[dev]"           # adds pytest + sphinx for development
+uv add "git+https://github.com/nster101/nemopy"                  # core (numpy only)
+uv add "nemopy[pandas] @ git+https://github.com/nster101/nemopy" # + pandas interop
+uv add "nemopy[polars] @ git+https://github.com/nster101/nemopy" # + polars interop
+```
+
+This gives you the core types (`ColVec`, `Mat`), shape-guarded arithmetic, the
+Tier-2 decompositions (`svd`, `qr`, `lu`, `cholesky`, `eigh`) and the stats
+helpers — everything that wraps NumPy directly. Tier-3 methods (advanced
+decompositions, elimination, and future LP / network / Markov features) are
+**not** available in this mode: calling one raises a clear `ImportError`
+pointing at the build step, rather than silently falling back.
+
+### Mode B — Rust-enabled
+
+To unlock the Tier-3 surface, build the optional Rust extension after cloning
+the repository. `scripts/build_rust.sh` is the canonical build command (it
+wraps `maturin`):
+
+```bash
+git clone https://github.com/nster101/nemopy
+cd nemopy
+uv sync                             # install Python deps (incl. dev toolchain)
+scripts/build_rust.sh               # compile nemopy._rust_core via maturin
+```
+
+Verify which mode is active:
+
+```bash
+python -c "import nemopy._core as c; print('rust active:', c._RUST is not None)"
+```
+
+Prints `rust active: True` once the extension is built (Mode B) and
+`rust active: False` in pure-Python mode (Mode A).
+
+For development (pytest + sphinx and the full toolchain), use the `dev` extra:
+
+```bash
+uv sync --extra dev
 ```
 
 ## Quick start
