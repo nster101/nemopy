@@ -51,8 +51,89 @@ fn fused_sub<'py>(
     Ok(out.to_pyarray(py))
 }
 
+/// Fused shape guard + elementwise addition (issue #109 Phase 2).
+#[pyfunction]
+fn fused_add<'py>(
+    py: Python<'py>,
+    a: PyReadonlyArray2<'py, f64>,
+    b: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let a = a.as_array();
+    let b = b.as_array();
+    if a.shape() != b.shape() {
+        return Err(shape_error(
+            py,
+            format!(
+                "Element-wise '+' requires identical shapes, got ({}, {}) and ({}, {}). \
+                 If broadcasting is intended, use np.multiply / np.add directly.",
+                a.shape()[0],
+                a.shape()[1],
+                b.shape()[0],
+                b.shape()[1]
+            ),
+        ));
+    }
+    let out = py.allow_threads(|| &a + &b);
+    Ok(out.to_pyarray(py))
+}
+
+/// Fused shape guard + elementwise multiplication (issue #109 Phase 2).
+#[pyfunction]
+fn fused_mul<'py>(
+    py: Python<'py>,
+    a: PyReadonlyArray2<'py, f64>,
+    b: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let a = a.as_array();
+    let b = b.as_array();
+    if a.shape() != b.shape() {
+        return Err(shape_error(
+            py,
+            format!(
+                "Element-wise '*' requires identical shapes, got ({}, {}) and ({}, {}). \
+                 If broadcasting is intended, use np.multiply / np.add directly.",
+                a.shape()[0],
+                a.shape()[1],
+                b.shape()[0],
+                b.shape()[1]
+            ),
+        ));
+    }
+    let out = py.allow_threads(|| &a * &b);
+    Ok(out.to_pyarray(py))
+}
+
+/// Fused shape guard + elementwise division (issue #109 Phase 2).
+#[pyfunction]
+fn fused_div<'py>(
+    py: Python<'py>,
+    a: PyReadonlyArray2<'py, f64>,
+    b: PyReadonlyArray2<'py, f64>,
+) -> PyResult<Bound<'py, PyArray2<f64>>> {
+    let a = a.as_array();
+    let b = b.as_array();
+    if a.shape() != b.shape() {
+        return Err(shape_error(
+            py,
+            format!(
+                "Element-wise '/' requires identical shapes, got ({}, {}) and ({}, {}). \
+                 If broadcasting is intended, use np.multiply / np.add directly.",
+                a.shape()[0],
+                a.shape()[1],
+                b.shape()[0],
+                b.shape()[1]
+            ),
+        ));
+    }
+    let out = py.allow_threads(|| &a / &b);
+    Ok(out.to_pyarray(py))
+}
+
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(register_shape_error, m)?)?;
     m.add_function(wrap_pyfunction!(fused_sub, m)?)?;
+    m.add_function(wrap_pyfunction!(fused_add, m)?)?;
+    m.add_function(wrap_pyfunction!(fused_mul, m)?)?;
+    m.add_function(wrap_pyfunction!(fused_div, m)?)?;
     Ok(())
 }
