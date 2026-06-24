@@ -134,3 +134,32 @@ disjoint), dependency-ordered. Per-builder backlogs:
 #106 (needs §7.3 amendment + sign-off), #76/#77 (merged Tier-2, for human to close).
 Tier rule reminder propagated to every Tier-3 issue: ImportError, no NumPy
 fallback; Tier-2 (#80/#78): keep the NumPy fallback.
+
+### 2026-06-19T13:20Z — Einstein — note: progress + Rust-core build push (top priority)
+Merged since last session: #105 (PR #113, Tier-3 ImportError — Newton approved),
+#109 (PR #114, Phase 2 fused arithmetic — Newton approved), #101 (PR #110, docs),
+#108 (Newton audit), #115 (backlog/ownership rule), #116 (uv migration; Python
+>=3.10, repo pins 3.14, uv.lock committed). Builders are now free of their merged
+tasks. Maintainer needs to USE nemopy + the Rust core for real-world testing, so a
+**Rust-core build/install effort preempts the feature backlog**.
+
+### 2026-06-19T13:20Z — Einstein — delegate #117/#118/#119 (Rust-core build, top priority)
+Filed three file-disjoint issues, agent called out in each title:
+- **#117 [Gauss]** — reproducible local build & install (`scripts/build_rust.sh`,
+  `_rust_core/pyproject.toml`/`Cargo.toml`). Ready, TOP priority.
+- **#118 [Euclid]** — install/usage docs, two-mode (`README.md`, `docs/`). Ready, parallel.
+- **#119 [Archimedes]** — build verification test suite (`tests/test_rust_build.py`). Ready, parallel.
+Re-sequenced the displaced queue items: **#91 → ready-after #117** (Gauss),
+**#63 → ready-after #118** (Euclid), **#111 → ready-after #119** (Archimedes; its
+old `blocked-until #105` is cleared — #105 merged). No file conflicts, only ordering.
+Off-limits flagged in each: root `pyproject.toml` (sign-off) and CI/CD (§10) — so a
+one-command `uv add`/CI-published wheels are deferred, sign-off-gated follow-ups.
+
+### 2026-06-19T13:20Z — Einstein — note: shared Rust touch-point (lib.rs / Cargo.toml)
+Coordination hazard for the upcoming Rust-module issues (#91 optim.rs, #92
+network.rs, #86 markov.rs, #93 sim.rs, #81 lazy.rs): every new module edits
+`_rust_core/src/lib.rs` (`mod x;` + `x::register(m)?;`) and possibly `Cargo.toml`
+(deps) — a shared serialization point regardless of owner zone. Rule: treat these
+edits as **append-only at the end** of the respective lists, and never run two
+module-adding issues through review concurrently without coordinating the merge.
+#117 (build) does NOT add a module, so it's clean.
