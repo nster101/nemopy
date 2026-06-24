@@ -260,6 +260,33 @@ check("Mat.to_list() gives nested rows", Q.to_list() == [[1.0, 2.0], [3.0, 4.0]]
 
 
 # ──────────────────────────────────────────────────────────────────────
+#  SECTION 4 — RUST CORE (two-mode load/feature smoke check)
+# ──────────────────────────────────────────────────────────────────────
+print("\n=== RUST CORE ===\n")
+
+from nemopy import _core
+
+if _core._RUST is not None:
+    version = _core._RUST.rust_core_version()
+    check("Rust core loaded (rust_core_version)",
+          isinstance(version, str) and bool(version))
+    # Tier-3 feature smoke: LDU factorization A = L @ D @ U.
+    A_ldu = mat([4, 2], [2, 5])
+    L, Dg, U = A_ldu.ldu()
+    check("Tier-3 ldu() reconstructs A (Rust core)",
+          allclose(np.asarray(L) @ np.asarray(Dg) @ np.asarray(U), A_ldu))
+else:
+    print("  [INFO] Rust core not built — Tier-3 features raise ImportError.")
+    try:
+        mat([4, 2], [2, 5]).ldu()
+        check("Tier-3 ldu() raises ImportError when core absent", False,
+              "no exception raised")
+    except ImportError as exc:
+        check("Tier-3 ldu() raises ImportError when core absent",
+              "maturin develop" in str(exc))
+
+
+# ──────────────────────────────────────────────────────────────────────
 #  SUMMARY
 # ──────────────────────────────────────────────────────────────────────
 print(f"\n{'='*50}")
