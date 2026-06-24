@@ -71,3 +71,32 @@ pre-exist on `main` at the same lines +31 and are correctly left out-of-scope pe
 Doc-only PRs are gate-exempt, but verdict recorded since review was requested.
 Formal GitHub Approve blocked (crew shares repo-owner identity) → "approved"
 posted as a PR comment.
+
+### 2026-06-19T11:55Z — Newton — approved #105 (PR #113) + #109 (PR #114)
+
+Gated the two new feature PRs; both pass. Built `_rust_core` myself (maturin
+build → wheel → loaded the `.so`) to verify the Rust paths CI skips, then removed
+the artifacts (tree left clean).
+
+**PR #113 (#105 — Tier-3 ImportError):** all 13 methods route through new
+`_core._require_rust(method)` (clear ImportError naming method + `maturin
+develop`); composed methods gated before delegating; Tier-2 #76 + #77 untouched;
+no signature changes. Verified OWNER's §6.6 authorization (issue #105,
+2026-06-19T11:23) for the test rewrites — legit. jordan = strict ImportError per
+OWNER ruling; Tier-1 dispatch gap deferred to #111. Ran: 17 passed/13 skipped
+(rust absent, = CI) and 30 passed (rust built). CI green at `cf5dd69` (12 checks).
+TDD order correct. Nit (non-blocking): §6.6 auth not cited in commit message (is
+in PR body). #84/#85 close on merge.
+
+**PR #114 (#109 — Phase 2 fused_add/mul/div, Tier-2):** forward `+`/`*`/`/`
+dispatch to new Rust kernels under the `__sub__` guard; faithful mirror of
+`fused_sub`. Built extension and ran parity test (spy confirms real dispatch):
+Rust values+types == NumPy fallback for ColVec & Mat; shape-guard message
+byte-identical to `_check_shapes` (no broadcasting introduced). Tier-2 fallback
+retained (no ImportError — correct, different tier from #105). Forward-only
+mirrors precedent. Scope: ops.rs + _operators.py + add-only tests; `_core.py`
+untouched. Ran: 10 passed (rust)/80 passed (fallback). CI green at `1fa11b0` (12
+checks incl. CodeQL rust compile).
+
+Both marked ready-for-review (un-drafted) and "approved" posted as PR comments
+(formal Approve blocked — shared repo-owner identity). Human merges.
