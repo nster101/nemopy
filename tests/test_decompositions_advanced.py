@@ -49,19 +49,47 @@
 - Source: issue #84 design principles ("Raise ShapeError for non-square
           matrices where squareness is required").
 - Expected: ShapeError for ldu/schur/jordan/diagonalize on a 3x2 Mat.
+
+## Test: test_tier3_requires_rust
+- Goal: every Tier-3 advanced decomposition (ldu, qdr, schur, polar,
+        diagonalize, jordan) raises a clear ImportError naming the method
+        when _rust_core is absent, instead of assembling a NumPy/SciPy
+        answer from Tier-2 primitives.
+- Source: DESIGN_APPENDICES.md §20.1 (Rust-primary: no Python fallback)
+          and §20.4 (these methods are tier "3 — Rust-primary"); issue
+          #105.
+- Expected: ImportError matching the method name with _core._RUST forced
+            to None.
 """
 
 import numpy as np
 import pytest
 
-from nemopy import Mat, ShapeError, mat
+from nemopy import Mat, ShapeError, _core, mat
+
+# Advanced decompositions (issue #84) are Rust-primary per
+# DESIGN_APPENDICES.md §20.1/§20.4: no NumPy/SciPy fallback exists, so the
+# production computation only runs when the compiled extension is present.
+# Correctness tests are gated on that; ImportError-when-absent is asserted
+# separately in test_tier3_requires_rust.
+requires_rust = pytest.mark.skipif(
+    _core._RUST is None,
+    reason="_rust_core extension not built (Tier-3 requires Rust)",
+)
+
+# Public Tier-3 advanced-decomposition methods (#84), asserted to raise
+# ImportError when _rust_core is absent.
+_TIER3_METHODS = (
+    "ldu", "qdr", "schur", "polar", "diagonalize", "jordan",
+)
 
 
 def _np(x):
     return np.asarray(x)
 
 
-def test_ldu(backend):
+@requires_rust
+def test_ldu():
     A = mat([4, 2], [2, 5])
     L, D, U = A.ldu()
     np.testing.assert_allclose(_np(L) @ _np(D) @ _np(U), _np(A), atol=1e-10)
@@ -72,7 +100,8 @@ def test_ldu(backend):
         mat([0, 1], [1, 0]).ldu()
 
 
-def test_qdr(backend):
+@requires_rust
+def test_qdr():
     A = mat([3, 4, 0], [-4, 3, 1], [1, 0, 2])
     Q, D, R = A.qdr()
     np.testing.assert_allclose(_np(Q) @ _np(D) @ _np(R), _np(A), atol=1e-10)
@@ -81,6 +110,7 @@ def test_qdr(backend):
     np.testing.assert_allclose(np.diag(_np(R)), np.ones(3), atol=1e-12)
 
 
+@requires_rust
 def test_schur():
     pytest.importorskip("scipy")
     A = mat([4, 1, 0], [2, 3, 1], [0, 1, 2])
@@ -90,7 +120,8 @@ def test_schur():
     np.testing.assert_allclose(_np(Z).T @ _np(Z), np.eye(3), atol=1e-10)
 
 
-def test_polar(backend):
+@requires_rust
+def test_polar():
     A = mat([3, 1, 0], [1, 2, 1])  # tall (3, 2)
     U, P = A.polar()
     assert isinstance(U, Mat) and isinstance(P, Mat)
@@ -100,6 +131,7 @@ def test_polar(backend):
     assert np.linalg.eigvalsh(_np(P)).min() >= -1e-10
 
 
+@requires_rust
 def test_diagonalize():
     A = mat([2, 0], [1, 3])
     P, D = A.diagonalize()
@@ -112,6 +144,7 @@ def test_diagonalize():
         defective.diagonalize()
 
 
+@requires_rust
 def test_jordan():
     A = mat([2, 0], [1, 3])  # diagonalizable
     J, P = A.jordan()
@@ -133,3 +166,11 @@ def test_advanced_square_guards():
     for method in ("ldu", "schur", "jordan", "diagonalize"):
         with pytest.raises(ShapeError):
             getattr(rect, method)()
+
+
+@pytest.mark.parametrize("method", _TIER3_METHODS)
+def test_tier3_requires_rust(method, monkeypatch):
+    monkeypatch.setattr(_core, "_RUST", None)
+    A = mat([4, 2], [2, 5])
+    with pytest.raises(ImportError, match=method):
+        getattr(A, method)()
