@@ -357,17 +357,27 @@ def as_col(x):
     Examples
     --------
     >>> as_col([1, 2, 3])
-    ColVec([1.0, 2.0, 3.0])
+    ColVec(3):
+      [1]
+      [2]
+      [3]
 
     >>> import pandas as pd
     >>> as_col(pd.Series([4, 5, 6]))
-    ColVec([4.0, 5.0, 6.0])
+    ColVec(3):
+      [4]
+      [5]
+      [6]
 
     >>> as_col(np.array([7, 8, 9]))    # 1D ndarray — no warning, unlike mat()
-    ColVec([7.0, 8.0, 9.0])
+    ColVec(3):
+      [7]
+      [8]
+      [9]
 
     >>> as_col(42)                      # scalar -> (1,1) ColVec
-    ColVec([42.0])
+    ColVec(1):
+      [42]
 
     See Also
     --------
@@ -640,6 +650,7 @@ is always preserved regardless.
 
 | Expression (on Mat A) | Result type | Shape |
 |---|---|---|
+| `A[i]` | `ColVec` | `(n, 1)` — **single index → column i (column-first)** |
 | `A[i, j]` | `float` | scalar |
 | `A[:, j]` | `ColVec` | `(n, 1)` — **core contract: columns come back as ColVec** |
 | `A[:, j:k]` | `Mat` | `(n, m)` — column slice |
@@ -1220,3 +1231,91 @@ Each issue listed in §20.4 carries the working API sketch, design
 principles, and Rust kernel requirements for its domain, and is kept
 current as design evolves. Issue #75 is the umbrella record for the Rust
 core and its phase plan.
+
+---
+
+## 21. Numerical Hygiene API
+
+Floating-point results carry rounding error, smear (tiny non-zero entries that should be
+zero), signed zeros, and the occasional catastrophic amplification. §4.6 keeps the
+*display* honest; this section gives the user explicit, first-class tools to clean and
+compare the *data*. Everything here is additive — no existing operation changes result.
+
+### 21.1 `round()` support — `__round__`
+
+`_VecBase` defines `__round__` so Python's builtin `round()` works on `ColVec` and `Mat`
+(today `round(A)` raises `TypeError`). It returns the **same type**, rounds elementwise,
+and normalises signed zero (so a rounded `-0.0` becomes `0.0` in the data, not just the
+display).
+
+```python
+# On _VecBase:
+def __round__(self, ndigits=None):
+    """Elementwise round; returns the same nemopy type.
+
+    Supports both ``round(A)`` (ndigits=None -> nearest integer) and
+    ``round(A, n)``. Signed zeros in the result are normalised to ``0.0``.
+    """
+    out = np.round(np.asarray(self), 0 if ndigits is None else ndigits)
+    out = out + 0.0          # normalise -0.0 -> 0.0
+    return type(self)(out)
+```
+
+### 21.2 `.clean(tol=..., snap_to_int=False)`
+
+`clean` returns a **copy** of the data with floating-point noise removed; it never
+mutates the original.
+
+```python
+# On _VecBase:
+def clean(self, tol=1e-12, *, snap_to_int=False):
+    """Return a copy with floating-point noise removed.
+
+    Parameters
+    ----------
+    tol : float, default 1e-12
+        Entries with magnitude below ``tol`` are set to ``0.0``; signed zeros
+        are normalised.
+    snap_to_int : bool, default False
+        If True, entries within ``tol`` of the nearest integer are snapped to
+        that integer.
+
+    Returns
+    -------
+    Same type as ``self`` (ColVec or Mat).
+    """
+    out = np.array(self, dtype=float, copy=True)
+    if snap_to_int:
+        nearest = np.round(out)
+        out = np.where(np.abs(out - nearest) < tol, nearest, out)
+    out[np.abs(out) < tol] = 0.0
+    out = out + 0.0          # normalise -0.0 -> 0.0
+    return type(self)(out)
+```
+
+`clean` is the data-level counterpart of the display chop in §4.6. Use it before
+displaying a result that should be exact (e.g. ``(Q.T @ Q).clean()`` to confirm
+orthogonality) or before exporting values.
+
+### 21.3 Tolerance comparisons — `isclose` / `allclose`
+
+nemopy does not reimplement NumPy's tolerance comparisons. ``nemopy.isclose`` and
+``nemopy.allclose`` resolve to ``numpy.isclose`` / ``numpy.allclose`` through the
+namespace re-export (§2.1), and are the supported way to compare nemopy values up to a
+tolerance:
+
+```python
+allclose(Q.T @ Q, eye(3))        # True within default rtol/atol
+isclose(x, 0.0, atol=1e-9)       # elementwise boolean array
+```
+
+They operate elementwise on the underlying arrays; default tolerances are NumPy's
+(``rtol=1e-05``, ``atol=1e-08``). Use ``allclose`` for a single yes/no answer and
+``isclose`` for an entrywise mask.
+
+### 21.4 What this is not
+
+This API does **not** introduce a global "tolerance mode", does not change the dtype
+policy (everything stays ``float64``), and does not alter the result of any arithmetic or
+decomposition. It is a set of explicit, opt-in cleaners and comparators; the default
+behaviour of every existing operation is unchanged.
