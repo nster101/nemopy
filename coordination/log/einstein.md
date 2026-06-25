@@ -163,3 +163,42 @@ network.rs, #86 markov.rs, #93 sim.rs, #81 lazy.rs): every new module edits
 edits as **append-only at the end** of the respective lists, and never run two
 module-adding issues through review concurrently without coordinating the merge.
 #117 (build) does NOT add a module, so it's clean.
+
+### 2026-06-25T00:00Z — Einstein — note: maintainer design review → 4 spec decisions
+Maintainer brought a REPL transcript raising three core-type issues and made four
+rulings: (1) **slicing** — bare `A[i]` selects COLUMN i (column-first), not row data;
+(2) **repr** — `ColVec` prints vertically; (3) **float hygiene** — display normalize/chop
++ numeric `round`/`clean`/`isclose` + algorithmic near-singular guard (all three layers);
+(4) **preempt the backlog** with these. Verified each against spec: all were either
+spec-mandated current behavior (§4.2 horizontal repr; §4.3 `.6g` → `-0`) or a §6.3 internal
+contradiction (`A[i]` impl defaulted to ColVec). `nm.round` was a numpy leak via
+`from numpy import *`, not a feature. Maintainer then **explicitly authorized editing the
+immutable spec**.
+
+### 2026-06-25T00:00Z — Einstein — note: authored spec amendments → PR #128 (draft)
+Authored the four amendments myself (conductor owns design; keeps Newton's anchor stable):
+§6.3/§15 (A[i]→column, Mat.__iter__→columns), §4.2/§4.3/§4.6 (vertical ColVec + shared
+`_fmt_entry` signed-zero/relative-chop), §21 (new — `__round__`/`clean`/isclose passthrough),
+§9.1/§9.5/§10.1/§10.2/§2.3 (`IllConditionedWarning` on near-singular `.inv`). Swept the 5
+in-spec ColVec doctests. PR #128 is **spec-only + this log** (single-branch session). Flagged
+5 design choices for maintainer sign-off on the PR (iter→columns; default-on relative chop
+@1e-12; vertical format; numerics signatures; cond threshold + the extra-SVD perf cost).
+
+### 2026-06-25T00:00Z — Einstein — delegate #129/#130/#131/#132 -> Gauss (serial _core.py chain)
+Created four impl issues, all owner **Gauss**, gated on #128 merging, **serialized on
+`nemopy/_core.py`** (one-owner-per-file): #129 (A[i]→column + __iter__) → #130 (vertical
+repr + display hygiene) → #131 (numerics API) → #132 (near-singular warning). #130 also
+sweeps merged #101's empty-ColVec doc artifacts (`ColVec([])`→`ColVec(0):`) under §6.6.
+This preempts Gauss's #91 (LP). **Archimedes** continues #119 (in review) → #111 (decomp
+kernels, `decomp.rs`/`_decompositions.py`) — disjoint from `_core.py`, runs in PARALLEL.
+**Euclid** HOLD #63/#66 until #129/#130 land — pandas/polars compat tests assert the
+changing repr/indexing behavior. Newton gates each PR (#128 spec, then #129–#132).
+
+### 2026-06-25T00:00Z — Einstein — note: audit of open issues vs amended spec
+Per maintainer ask, scanned the backlog for conflicts with #128. Advisories posted:
+`.inv`-now-warns → **#66** (normal-equations compat — expect/filter the warning), **#78**
+(labeled `.inv` bridge inherits it), **#80** (per-element batch `.inv` — design how a batch
+surfaces it; also align BatchMat to column-first Mat). Repr-format → **#102** (held; old
+`ColVec([])` examples to refresh when actioned); **#101** (merged) handled by #130's sweep.
+Merged decomposition code (#84/#85) that calls `.inv` internally may now emit the warning —
+informational, low risk, no reopen. Rust-domain issues (#79/#86/#87/#91/#92/#93) unaffected.
