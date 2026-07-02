@@ -44,6 +44,14 @@ def _check_shapes(a, b, op_name):
 
 def __mul__(self, other):
     other = _coerce_1d(self, other)
+    rust = _core._RUST
+    if (
+        rust is not None
+        and isinstance(other, _VecBase)
+        and self.dtype == np.float64
+        and other.dtype == np.float64
+    ):
+        return _core._apply_type_rules(rust.fused_mul(self, other))
     _check_shapes(self, other, "*")
     return super(_VecBase, self).__mul__(other)
 
@@ -56,6 +64,14 @@ def __rmul__(self, other):
 
 def __add__(self, other):
     other = _coerce_1d(self, other)
+    rust = _core._RUST
+    if (
+        rust is not None
+        and isinstance(other, _VecBase)
+        and self.dtype == np.float64
+        and other.dtype == np.float64
+    ):
+        return _core._apply_type_rules(rust.fused_add(self, other))
     _check_shapes(self, other, "+")
     return super(_VecBase, self).__add__(other)
 
@@ -88,6 +104,14 @@ def __rsub__(self, other):
 
 def __truediv__(self, other):
     other = _coerce_1d(self, other)
+    rust = _core._RUST
+    if (
+        rust is not None
+        and isinstance(other, _VecBase)
+        and self.dtype == np.float64
+        and other.dtype == np.float64
+    ):
+        return _core._apply_type_rules(rust.fused_div(self, other))
     _check_shapes(self, other, "/")
     return super(_VecBase, self).__truediv__(other)
 

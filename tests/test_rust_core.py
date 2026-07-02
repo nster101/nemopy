@@ -35,7 +35,31 @@
 - Source: DESIGN_APPENDICES.md §20.1 fallback scope (owner amendment).
 - Expected: same values/types via the pure-NumPy path, and the same
             ShapeError on mismatched shapes.
+
+## Test: test_fused_arith_parity
+- Goal: Verify each forward operator (+, *, /) dispatches through its Phase 2
+        Rust kernel and the Rust-path result matches the pure-NumPy fallback
+        in both value and nemopy result type. A spy on the kernel proves the
+        dispatch actually routes to Rust (otherwise the value parity is
+        vacuous); computing the reference with the extension forced absent
+        exercises the retained Tier-2 fallback.
+- Source: issue #109 Phase 2 (fused_add/mul/div); DESIGN_APPENDICES.md
+          §20.1 (results agree across paths; Tier-2 fallback retained),
+          §20.3 (type persistence), §20.5 (Phase 2 hot-path replacement).
+- Expected: kernel invoked; ColVec op ColVec → ColVec, Mat op Mat → Mat;
+            Rust-path values equal the forced-fallback values.
+
+## Test: test_fused_arith_shape_error_message
+- Goal: Verify each Phase 2 kernel fuses the shape guard and raises
+        ShapeError with the same per-operator message contract as fused_sub.
+- Source: DESIGN.md §7 shape-guarded arithmetic (message text in
+          nemopy._operators._check_shapes); issue #109 (kernels fuse the
+          guard, so they must preserve guard semantics).
+- Expected: ShapeError whose message starts with "Element-wise '<op>'
+            requires identical shapes".
 """
+
+import operator
 
 import numpy as np
 import pytest
@@ -85,3 +109,52 @@ def test_sub_fallback_without_extension(monkeypatch):
     assert d.to_list() == [4.0, 5.0, 6.0]
     with pytest.raises(ShapeError, match=r"identical shapes"):
         mat([1, 2], [3, 4]) - mat([1, 2, 3], [4, 5, 6])
+
+
+@requires_rust
+@pytest.mark.parametrize(
+    "op, kernel",
+    [
+        (operator.add, "fused_add"),
+        (operator.mul, "fused_mul"),
+        (operator.truediv, "fused_div"),
+    ],
+)
+def test_fused_arith_parity(op, kernel, monkeypatch):
+    col_a, col_b = _c[5, 7, 9], _c[1, 2, 3]
+    mat_a, mat_b = mat([5, 7], [9, 11]), mat([1, 2], [3, 4])
+
+    with monkeypatch.context() as m:
+        m.setattr(_core, "_RUST", None)
+        numpy_col, numpy_mat = op(col_a, col_b), op(mat_a, mat_b)
+
+    invoked = {}
+    original = getattr(_core._RUST, kernel)
+
+    def spy(a, b, _orig=original):
+        invoked["called"] = True
+        return _orig(a, b)
+
+    monkeypatch.setattr(_core._RUST, kernel, spy)
+    rust_col, rust_mat = op(col_a, col_b), op(mat_a, mat_b)
+
+    assert invoked.get("called")
+    assert isinstance(rust_col, ColVec) and isinstance(numpy_col, ColVec)
+    assert isinstance(rust_mat, Mat) and isinstance(numpy_mat, Mat)
+    np.testing.assert_array_equal(np.asarray(rust_col), np.asarray(numpy_col))
+    np.testing.assert_array_equal(np.asarray(rust_mat), np.asarray(numpy_mat))
+
+
+@requires_rust
+@pytest.mark.parametrize(
+    "kernel, symbol",
+    [("fused_add", "+"), ("fused_mul", "*"), ("fused_div", "/")],
+)
+def test_fused_arith_shape_error_message(kernel, symbol):
+    a = np.asarray(_c[1, 2, 3])
+    b = np.asarray(_c[1, 2])
+    with pytest.raises(
+        ShapeError,
+        match=rf"Element-wise '\{symbol}' requires identical shapes",
+    ):
+        getattr(_core._RUST, kernel)(a, b)
