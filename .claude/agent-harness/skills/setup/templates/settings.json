@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(git status:*)",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(git pull --ff-only:*)",
+      "Bash(git remote -v)",
+      "Bash(git ls-remote:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git for-each-ref:*)",
+      "Bash(git add:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(git check-attr:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(jq:*)",
+      "mcp__github__list_issues",
+      "mcp__github__issue_read",
+      "mcp__github__list_pull_requests",
+      "mcp__github__pull_request_read",
+      "mcp__github__get_me",
+      "mcp__github__search_issues",
+      "mcp__github__search_pull_requests",
+      "mcp__github__get_file_contents",
+      "mcp__github__list_commits",
+      "mcp__github__actions_list",
+      "mcp__github__actions_get",
+      "mcp__github__get_job_logs",
+      "mcp__github__add_issue_comment",
+      "mcp__github__pull_request_review_write",
+      "mcp__github__add_comment_to_pending_review"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
