@@ -972,3 +972,43 @@ class Mat(_VecBase):
         if schema is None:
             schema = [f"col_{i}" for i in range(arr.shape[1])]
         return pl.from_numpy(arr, schema=schema)
+
+
+def _load_rust_core():
+    """Import the optional ``_rust_core`` extension (issue #75).
+
+    Returns the compiled module when it is importable and structurally
+    valid, else ``None``. The bare crate source directory
+    ``nemopy/_rust_core/`` is importable as an empty namespace package,
+    so validity is checked by attribute rather than import success alone.
+    """
+    import importlib
+
+    try:
+        ext = importlib.import_module("nemopy._rust_core")
+    except ImportError:
+        return None
+    if not hasattr(ext, "rust_core_version"):
+        return None
+    ext.register_shape_error(ShapeError)
+    return ext
+
+
+_RUST = _load_rust_core()
+
+
+def _require_rust(method):
+    """Return the loaded ``_rust_core`` extension or raise ``ImportError``.
+
+    Tier-3 features (DESIGN_APPENDICES.md §20.1/§20.4) have no NumPy
+    equivalent, so when the compiled extension is absent there is nothing
+    to fall back to. Raises a clear ``ImportError`` naming ``method`` and
+    pointing at the build step instead of computing a substitute answer.
+    """
+    if _RUST is None:
+        raise ImportError(
+            f"Mat.{method}() requires the compiled nemopy._rust_core "
+            f"extension, which is not available. Build it with "
+            f"`maturin develop` to enable this Tier-3 feature."
+        )
+    return _RUST

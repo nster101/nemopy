@@ -59,6 +59,37 @@ immediately.
    ColVec([0.2857142857142857, 0.5714285714285714, 0.8571428571428571])
 
 
+Empty / placeholder column vector
+---------------------------------
+
+``_c`` builds a column vector from a flat sequence of scalars, so it has no
+empty form — ``_c[]`` is a Python ``SyntaxError``, and ``_c`` rejects
+non-scalar input such as lists. To create an empty placeholder column vector,
+wrap a ``(0, 1)`` array with ``ColVec`` directly. A ``(1, 0)`` array is a row,
+not a column, and is correctly rejected.
+
+.. doctest::
+
+   >>> # Empty placeholder — a valid (0, 1) column vector
+   >>> placeholder = ColVec(np.empty((0, 1)))
+   >>> placeholder
+   ColVec([])
+   >>> placeholder.shape
+   (0, 1)
+
+   >>> # A (1, 0) array is a row, not a column — rejected
+   >>> ColVec(np.empty((1, 0)))   # doctest: +IGNORE_EXCEPTION_DETAIL
+   Traceback (most recent call last):
+       ...
+   ShapeError: ...
+
+   >>> # _c takes scalars only — a nested list raises ValueError
+   >>> _c[[1, 2, 3]]   # doctest: +IGNORE_EXCEPTION_DETAIL
+   Traceback (most recent call last):
+       ...
+   ValueError: ...
+
+
 MATLAB-style matrix literals
 ------------------------------
 

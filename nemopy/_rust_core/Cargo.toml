@@ -1,0 +1,27 @@
+# nemopy._rust_core — Rust fast paths for nemopy (issue #75).
+#
+# Development build (produces nemopy/_rust_core.so for in-tree imports):
+#   cargo build --release --manifest-path nemopy/_rust_core/Cargo.toml
+#   cp nemopy/_rust_core/target/release/lib_rust_core.so nemopy/_rust_core.so
+#
+# Wheel build: maturin build --release (from this directory).
+
+[package]
+name = "nemopy-rust-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_rust_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }
+numpy = "0.23"
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = "1.10"
+rand = { version = "0.8", features = ["small_rng"] }
+rand_distr = "0.4"
+
+[profile.release]
+lto = true

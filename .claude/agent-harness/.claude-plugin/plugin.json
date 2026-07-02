@@ -1,0 +1,7 @@
+{
+  "name": "the-girls",
+  "version": "0.1.0",
+  "description": "Reusable 5-agent crew: conductor (Einstein), peer builders (Archimedes/Euclid/Gauss), and an independent skeptic reviewer (Newton). Agents coordinate through git via per-agent logs, with a Newton 'approved' review gate before the human merges.",
+  "author": { "name": "nster101" },
+  "keywords": ["multi-agent", "workflow", "coordination", "review", "orchestration"]
+}
