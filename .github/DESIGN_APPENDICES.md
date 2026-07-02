@@ -357,17 +357,27 @@ def as_col(x):
     Examples
     --------
     >>> as_col([1, 2, 3])
-    ColVec([1.0, 2.0, 3.0])
+    ColVec(3):
+      [1]
+      [2]
+      [3]
 
     >>> import pandas as pd
     >>> as_col(pd.Series([4, 5, 6]))
-    ColVec([4.0, 5.0, 6.0])
+    ColVec(3):
+      [4]
+      [5]
+      [6]
 
     >>> as_col(np.array([7, 8, 9]))    # 1D ndarray — no warning, unlike mat()
-    ColVec([7.0, 8.0, 9.0])
+    ColVec(3):
+      [7]
+      [8]
+      [9]
 
     >>> as_col(42)                      # scalar -> (1,1) ColVec
-    ColVec([42.0])
+    ColVec(1):
+      [42]
 
     See Also
     --------
@@ -640,6 +650,7 @@ is always preserved regardless.
 
 | Expression (on Mat A) | Result type | Shape |
 |---|---|---|
+| `A[i]` | `ColVec` | `(n, 1)` — **single index → column i (column-first)** |
 | `A[i, j]` | `float` | scalar |
 | `A[:, j]` | `ColVec` | `(n, 1)` — **core contract: columns come back as ColVec** |
 | `A[:, j:k]` | `Mat` | `(n, m)` — column slice |
@@ -1109,22 +1120,36 @@ two tiers:
 1. **Fast path (required):** a Rust kernel in `_rust_core`. Every roadmap
    feature below is only considered useful at real-world scale with its
    Rust implementation — this is a hard requirement, not an optimization.
-2. **Fallback path (scoped):** a pure-Python/NumPy implementation with
-   identical semantics is required only where nemopy replaces or wraps
-   functionality NumPy already provides (decompositions, statistics,
-   elimination-style array transforms, random variates, batch
-   broadcasting). `nemopy` must remain pip-installable with `numpy` as
-   the only hard dependency, and that NumPy-replacement surface must keep
-   working without the extension. Extended functionality that does not
-   exist in NumPy (LP/IP solvers, network algorithms, Markov/queueing
-   simulation engines, decision methods, the lazy optimizer) is
-   Rust-primary: it may require `_rust_core` and must raise a clear
-   error directing the user to build the extension when it is absent.
+2. **Fallback path (scoped — NumPy-wrapping features only):** a
+   pure-Python/NumPy implementation is required **only** for features
+   that wrap functionality NumPy already provides natively. This means:
+   - Core decompositions that NumPy/LAPACK exposes (#76: SVD, QR, LU,
+     Cholesky, eig, eigh)
+   - Basic statistics that NumPy provides (mean, std, var, norm — #77)
+   - Batch broadcasting patterns built on NumPy primitives (#80)
+   
+   `nemopy` must remain pip-installable with `numpy` as the only hard
+   dependency, and that NumPy-wrapping surface must keep working without
+   the extension.
+3. **Rust-primary (no Python fallback required):** features that do not
+   exist in NumPy require `_rust_core` and raise a clear
+   `ImportError` directing the user to build the extension when it is
+   absent. **No Python fallback is required.** This includes:
+   - Advanced decompositions not in NumPy (#84: LDU, QDR, Schur,
+     Jordan, Polar, similarity decomposition)
+   - Gaussian elimination / REF / RREF (#85)
+   - LP/IP/MILP solvers (#91)
+   - Network optimization algorithms (#92)
+   - Markov chain analysis and simulation (#86)
+   - AHP/ANP decision methods (#87)
+   - Stochastic OR / Monte Carlo / queueing (#93)
+   - Lazy evaluation and expression optimization (#81)
+   - Financial/risk primitives beyond basic statistics (#79)
 
-Where both paths exist, both are exercised by the same test suite and a
-feature is not complete until results agree across paths within
-documented tolerances. Rust-primary features are complete when the Rust
-path passes the suite.
+Where both paths exist (tier 2), both are exercised by the same test
+suite and a feature is not complete until results agree across paths
+within documented tolerances. Rust-primary features (tier 3) are
+complete when the Rust path passes the suite.
 
 ### 20.2 Rust core layout
 
@@ -1166,21 +1191,21 @@ buffer interop).
 
 ### 20.4 Feature domains
 
-| Domain | Issues | Rust modules |
-|---|---|---|
-| Core decompositions (SVD, QR, LU, Cholesky, eig, eigh) | #76 | `decomp.rs` |
-| Advanced decompositions (LDU, QDR, Schur, Jordan, Polar, diagonalize) | #84 | `decomp.rs` |
-| Gaussian elimination, Gauss-Jordan, REF/RREF, rank, nullspace | #85 | `linalg.rs` |
-| Statistical methods (mean/std/var/norm/cov/corr, column-first) | #77 | `stats.rs` |
-| DataFrame-as-matrix bridge (`NamedMat`) | #78 | `ops.rs` |
-| Financial/risk primitives (portfolio, EWMA/rolling cov, factor models) | #79 | `stats.rs`, `sim.rs` |
-| Batch operations (`BatchMat`, `BatchColVec`) | #80 | `ops.rs` |
-| Lazy evaluation and expression optimization | #81 | `lazy.rs` |
-| Markov chains, DTMC/CTMC, simulation | #86 | `markov.rs` |
-| AHP/ANP multi-criteria decision methods | #87 | `decomp.rs` |
-| Linear programming (Simplex, dual simplex, LP/IP/MILP) | #91 | `optim.rs` |
-| Network optimization (shortest path, max flow, assignment) | #92 | `network.rs` |
-| Stochastic OR (Monte Carlo, queueing, discrete-event simulation) | #93 | `sim.rs` |
+| Domain | Issues | Rust modules | Tier |
+|---|---|---|---|
+| Core decompositions (SVD, QR, LU, Cholesky, eig, eigh) | #76 | `decomp.rs` | 2 — fallback |
+| Advanced decompositions (LDU, QDR, Schur, Jordan, Polar, diagonalize) | #84 | `decomp.rs` | 3 — Rust-primary |
+| Gaussian elimination, Gauss-Jordan, REF/RREF, rank, nullspace | #85 | `linalg.rs` | 3 — Rust-primary |
+| Statistical methods (mean/std/var/norm/cov/corr, column-first) | #77 | `stats.rs` | 2 — fallback |
+| DataFrame-as-matrix bridge (`NamedMat`) | #78 | `ops.rs` | 2 — fallback |
+| Financial/risk primitives (portfolio, EWMA/rolling cov, factor models) | #79 | `stats.rs`, `sim.rs` | 3 — Rust-primary |
+| Batch operations (`BatchMat`, `BatchColVec`) | #80 | `ops.rs` | 2 — fallback |
+| Lazy evaluation and expression optimization | #81 | `lazy.rs` | 3 — Rust-primary |
+| Markov chains, DTMC/CTMC, simulation | #86 | `markov.rs` | 3 — Rust-primary |
+| AHP/ANP multi-criteria decision methods | #87 | `decomp.rs` | 3 — Rust-primary |
+| Linear programming (Simplex, dual simplex, LP/IP/MILP) | #91 | `optim.rs` | 3 — Rust-primary |
+| Network optimization (shortest path, max flow, assignment) | #92 | `network.rs` | 3 — Rust-primary |
+| Stochastic OR (Monte Carlo, queueing, discrete-event simulation) | #93 | `sim.rs` | 3 — Rust-primary |
 
 ### 20.5 Phases
 
@@ -1206,3 +1231,91 @@ Each issue listed in §20.4 carries the working API sketch, design
 principles, and Rust kernel requirements for its domain, and is kept
 current as design evolves. Issue #75 is the umbrella record for the Rust
 core and its phase plan.
+
+---
+
+## 21. Numerical Hygiene API
+
+Floating-point results carry rounding error, smear (tiny non-zero entries that should be
+zero), signed zeros, and the occasional catastrophic amplification. §4.6 keeps the
+*display* honest; this section gives the user explicit, first-class tools to clean and
+compare the *data*. Everything here is additive — no existing operation changes result.
+
+### 21.1 `round()` support — `__round__`
+
+`_VecBase` defines `__round__` so Python's builtin `round()` works on `ColVec` and `Mat`
+(today `round(A)` raises `TypeError`). It returns the **same type**, rounds elementwise,
+and normalises signed zero (so a rounded `-0.0` becomes `0.0` in the data, not just the
+display).
+
+```python
+# On _VecBase:
+def __round__(self, ndigits=None):
+    """Elementwise round; returns the same nemopy type.
+
+    Supports both ``round(A)`` (ndigits=None -> nearest integer) and
+    ``round(A, n)``. Signed zeros in the result are normalised to ``0.0``.
+    """
+    out = np.round(np.asarray(self), 0 if ndigits is None else ndigits)
+    out = out + 0.0          # normalise -0.0 -> 0.0
+    return type(self)(out)
+```
+
+### 21.2 `.clean(tol=..., snap_to_int=False)`
+
+`clean` returns a **copy** of the data with floating-point noise removed; it never
+mutates the original.
+
+```python
+# On _VecBase:
+def clean(self, tol=1e-12, *, snap_to_int=False):
+    """Return a copy with floating-point noise removed.
+
+    Parameters
+    ----------
+    tol : float, default 1e-12
+        Entries with magnitude below ``tol`` are set to ``0.0``; signed zeros
+        are normalised.
+    snap_to_int : bool, default False
+        If True, entries within ``tol`` of the nearest integer are snapped to
+        that integer.
+
+    Returns
+    -------
+    Same type as ``self`` (ColVec or Mat).
+    """
+    out = np.array(self, dtype=float, copy=True)
+    if snap_to_int:
+        nearest = np.round(out)
+        out = np.where(np.abs(out - nearest) < tol, nearest, out)
+    out[np.abs(out) < tol] = 0.0
+    out = out + 0.0          # normalise -0.0 -> 0.0
+    return type(self)(out)
+```
+
+`clean` is the data-level counterpart of the display chop in §4.6. Use it before
+displaying a result that should be exact (e.g. ``(Q.T @ Q).clean()`` to confirm
+orthogonality) or before exporting values.
+
+### 21.3 Tolerance comparisons — `isclose` / `allclose`
+
+nemopy does not reimplement NumPy's tolerance comparisons. ``nemopy.isclose`` and
+``nemopy.allclose`` resolve to ``numpy.isclose`` / ``numpy.allclose`` through the
+namespace re-export (§2.1), and are the supported way to compare nemopy values up to a
+tolerance:
+
+```python
+allclose(Q.T @ Q, eye(3))        # True within default rtol/atol
+isclose(x, 0.0, atol=1e-9)       # elementwise boolean array
+```
+
+They operate elementwise on the underlying arrays; default tolerances are NumPy's
+(``rtol=1e-05``, ``atol=1e-08``). Use ``allclose`` for a single yes/no answer and
+``isclose`` for an entrywise mask.
+
+### 21.4 What this is not
+
+This API does **not** introduce a global "tolerance mode", does not change the dtype
+policy (everything stays ``float64``), and does not alter the result of any arithmetic or
+decomposition. It is a set of explicit, opt-in cleaners and comparators; the default
+behaviour of every existing operation is unchanged.

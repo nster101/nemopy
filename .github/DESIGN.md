@@ -180,6 +180,7 @@ __all__ = [
     "Mat",
     "ShapeError",
     "ConventionWarning",
+    "IllConditionedWarning",
 ]
 ```
 
@@ -347,8 +348,14 @@ class ColVec(_VecBase):
         return arr.view(cls)
 
     def __repr__(self):
-        vals = self.flatten().tolist()
-        return f"ColVec({vals})"
+        # A ColVec is an (n, 1) matrix; it prints vertically, one entry per line,
+        # so a column reads as a column (consistent with Mat). Entries pass through
+        # the shared _fmt_entry helper (signed-zero normalised, near-zero chopped
+        # for display only — see §4.6).
+        n = self.shape[0]
+        scale = float(np.max(np.abs(self))) if self.size else 0.0
+        body = "\n  ".join(f"[{_fmt_entry(v, scale)}]" for v in self.flatten())
+        return f"ColVec({n}):\n  {body}" if n else f"ColVec({n}):"
 
     def __str__(self):
         return self.__repr__()
@@ -387,8 +394,11 @@ class Mat(_VecBase):
         return arr.view(cls)
 
     def __repr__(self):
+        # Entries pass through the shared _fmt_entry helper (signed-zero normalised,
+        # near-zero chopped for display only — see §4.6).
+        scale = float(np.max(np.abs(self))) if self.size else 0.0
         rows = self.tolist()
-        row_strs = [", ".join(f"{v:.6g}" for v in row) for row in rows]
+        row_strs = [", ".join(_fmt_entry(v, scale) for v in row) for row in rows]
         inner = "\n  ".join(f"[{r}]" for r in row_strs)
         return f"Mat({self.shape[0]}x{self.shape[1]}):\n  {inner}"
 
@@ -460,6 +470,39 @@ The library does **not** override `__array_ufunc__` on NumPy < 2.0 — doing so 
 require reimplementing the full ufunc dispatch protocol, which is complex and fragile.
 On NumPy >= 2.0, where `__array_ufunc__` is the expected mechanism, the implementation
 should follow NumPy's subclassing guide for that version.
+
+### 4.6 Display Formatting: Signed Zero and Near-Zero Chop
+
+`__repr__` on both `ColVec` and `Mat` routes every entry through one shared helper so
+floating-point output is readable without ever altering the stored data. Indexing,
+`.tolist()`, conversions, and all arithmetic continue to see the exact stored values —
+the rules below affect `repr`/`str` *only*.
+
+```python
+# Module-level in _core.py
+_REPR_CHOP_RTOL = 1e-12
+
+def _fmt_entry(x, scale):
+    """Format a single entry for display.
+
+    - Signed zero is normalised: ``-0.0`` renders as ``0`` (never ``-0``).
+    - Near-zero chop (display only): an entry renders as ``0`` when its magnitude
+      is below ``_REPR_CHOP_RTOL * scale``, where ``scale`` is the largest absolute
+      entry in the container. When every entry is at the floor (``scale == 0``),
+      nothing is chopped, so an all-tiny container still shows its true values.
+    """
+    x = float(x)
+    if x == 0.0:                                    # normalise -0.0 -> 0.0
+        x = 0.0
+    elif scale > 0.0 and abs(x) < _REPR_CHOP_RTOL * scale:
+        x = 0.0                                     # display-only chop of smear
+    return f"{x:.6g}"
+```
+
+The chop is **relative** to the largest entry, so floating-point smear next to
+order-one values (e.g. a ``1e-16`` off-diagonal in ``Q.T @ Q``) reads as ``0`` while a
+matrix that is genuinely small in every entry is shown faithfully. To obtain a chopped
+*copy of the data* (not just the display), use ``.clean(tol=...)`` (§21).
 
 ---
 
@@ -754,7 +797,10 @@ def eye(n):
     --------
     >>> I = eye(3)
     >>> I @ _c[1, 2, 3]
-    ColVec([1.0, 2.0, 3.0])
+    ColVec(3):
+      [1]
+      [2]
+      [3]
 
     See Also
     --------
@@ -890,6 +936,7 @@ A = mat([1,2,3], [4,5,6], [7,8,9])    # shape (3, 3)
 
 | Expression         | Result type   | Shape      | Rationale                                   |
 |--------------------|---------------|------------|---------------------------------------------|
+| `A[i]`             | `ColVec`      | `(n, 1)`   | **Single index → column i** (column-first)   |
 | `A[i, j]`          | `float`       | scalar     | Element extraction                           |
 | `A[:, j]`          | `ColVec`      | `(n, 1)`   | **Single column → ColVec** (core contract)   |
 | `A[:, j:k]`        | `Mat`         | `(n, m)`   | Column slice → Mat                           |
@@ -910,6 +957,13 @@ the 1D result and promote it back to `ColVec`.
 ```python
 # On Mat:
 def __getitem__(self, key):
+    # Column-first single index: a bare integer selects column i and returns a
+    # ColVec, so A[i] is equivalent to A[:, i]. (A[i, :] still selects row i as a
+    # (1, k) Mat; A[i, j] still selects an element.) This is the indexing analogue
+    # of the column-first construction contract — columns go in, columns come out.
+    if isinstance(key, (int, np.integer)):
+        return self[:, key]
+
     result = super().__getitem__(key)
 
     # Scalar extraction → plain float
@@ -943,6 +997,17 @@ def __getitem__(self, key):
         return result.view(Mat)
 
     return np.asarray(result)
+```
+
+**Column-first iteration.** Because `A[i]` is column `i`, iterating a `Mat` must also be
+column-first, or `A[0]` and `list(A)[0]` would disagree. `Mat` overrides `__iter__` to
+yield columns as `ColVec`s (NumPy's default iterates rows):
+
+```python
+# On Mat:
+def __iter__(self):
+    # `for col in A` and `list(A)` are column-first, consistent with A[i].
+    return (self[:, j] for j in range(self.shape[1]))
 ```
 
 **Key detail:** The `__getitem__` override inspects the key tuple to distinguish column
@@ -1316,6 +1381,12 @@ def inv(self):
     numpy.linalg.LinAlgError
         If the matrix is singular (not invertible).
 
+    Warns
+    -----
+    IllConditionedWarning
+        If the matrix is invertible but ill-conditioned (near-singular), so the
+        computed inverse is numerically unreliable. The inverse is still returned.
+
     Examples
     --------
     >>> A = mat([1, 0], [0, 1])
@@ -1335,6 +1406,20 @@ def inv(self):
         raise ShapeError(
             f"Only square matrices have inverses. "
             f"This matrix has shape {self.shape}."
+        )
+    # Near-singular guard. An exactly singular matrix raises LinAlgError below; a
+    # merely ill-conditioned one inverts to numerically meaningless values with no
+    # error at all. Estimate the condition number and warn so the amplification is
+    # not silent. This does NOT expose a `.cond` property (§9.5) — the estimate is
+    # internal to the guard.
+    n = self.shape[0]
+    cond = np.linalg.cond(self)
+    if np.isfinite(cond) and cond > 1.0 / (n * np.finfo(float).eps):
+        warnings.warn(
+            f"Matrix is ill-conditioned (condition number ~{cond:.3g}); the "
+            f"inverse may be numerically unreliable.",
+            IllConditionedWarning,
+            stacklevel=2,
         )
     return Mat(np.linalg.inv(self))
 ```
@@ -1473,6 +1558,13 @@ The boundary is: properties that return a single object of clear type (`Mat` for
 complex structures or have multiple conventions (which norm for condition number? left
 or right eigenvectors?) are left to NumPy/SciPy.
 
+**Note — the near-singular warning (§9.1) does not contradict this.** Excluding `.cond`
+as a *property* does not forbid using a condition estimate *internally*. `.inv` computes
+one solely to emit `IllConditionedWarning` when an inverse would be numerically
+unreliable; it never exposes the number. nemopy surfaces a *diagnostic warning* for a
+foot-gun (a silent ~1e15 amplification) while still leaving the condition number itself
+to `np.linalg.cond(A)`.
+
 ---
 
 ## 10. Error Handling
@@ -1491,11 +1583,16 @@ class ConventionWarning(UserWarning):
     """Raised when a plain ndarray is passed where a nemopy type was expected,
     indicating a possible row/column convention mismatch."""
     pass
+
+class IllConditionedWarning(UserWarning):
+    """Raised when an operation on a near-singular matrix (e.g. `.inv`) yields a
+    numerically unreliable result. The operation still returns a value."""
+    pass
 ```
 
 `ShapeError` is a subclass of `ValueError` so it is caught by `except ValueError` in
-existing code. `ConventionWarning` is a subclass of `UserWarning` so it appears in
-standard warning filters.
+existing code. `ConventionWarning` and `IllConditionedWarning` are subclasses of
+`UserWarning` so they appear in standard warning filters.
 
 ### 10.2 Error Table
 
@@ -1517,6 +1614,7 @@ standard warning filters.
 | `Mat(1D_array)` | `ShapeError` | Requires 2D input |
 | `A.inv` where A is not square | `ShapeError` | States only square matrices have inverses |
 | `A.inv` where A is singular | `np.linalg.LinAlgError` | Propagated from NumPy |
+| `A.inv` where A is ill-conditioned (near-singular) | `IllConditionedWarning` | Reports estimated condition number; inverse still returned |
 | `A.det` where A is not square | `ShapeError` | States determinant requires square matrix |
 | `A.is_singular` where A is not square | `ShapeError` | States singularity requires square matrix |
 | `_c[5]` | Silent | Returns `(1,1)` — documented in docstring |

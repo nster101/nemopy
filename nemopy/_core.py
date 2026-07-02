@@ -995,3 +995,20 @@ def _load_rust_core():
 
 
 _RUST = _load_rust_core()
+
+
+def _require_rust(method):
+    """Return the loaded ``_rust_core`` extension or raise ``ImportError``.
+
+    Tier-3 features (DESIGN_APPENDICES.md §20.1/§20.4) have no NumPy
+    equivalent, so when the compiled extension is absent there is nothing
+    to fall back to. Raises a clear ``ImportError`` naming ``method`` and
+    pointing at the build step instead of computing a substitute answer.
+    """
+    if _RUST is None:
+        raise ImportError(
+            f"Mat.{method}() requires the compiled nemopy._rust_core "
+            f"extension, which is not available. Build it with "
+            f"`maturin develop` to enable this Tier-3 feature."
+        )
+    return _RUST

@@ -6,7 +6,10 @@
 
 use pyo3::prelude::*;
 
+mod decomp;
+mod linalg;
 mod ops;
+mod stats;
 
 #[pyfunction]
 fn rust_core_version() -> &'static str {
@@ -17,5 +20,8 @@ fn rust_core_version() -> &'static str {
 fn _rust_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_core_version, m)?)?;
     ops::register(m)?;
+    stats::register(m)?;
+    decomp::register(m)?;
+    linalg::register(m)?;
     Ok(())
 }
