@@ -15,10 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        numpy-version: ["1.26", "latest"]
+        numpy-version: ["2.0", "latest"]
         exclude:
           - python-version: "3.9"
-            numpy-version: "latest"
 
     name: Python ${{ matrix.python-version }} / NumPy ${{ matrix.numpy-version }}
 
